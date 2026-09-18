@@ -1,7 +1,10 @@
-import ChessBoard from './ChessBoard';
+import Connexion from "./Connexion";
 
 function App() {
-  return <ChessBoard />;
+    return (
+        <Connexion />
+    );
 }
 
 export default App;
+
