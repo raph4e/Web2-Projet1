@@ -1,0 +1,24 @@
+Dockerfile
+# 1. Image de base officielle Node.js
+FROM node:18-alpine
+
+# 2. Définit le répertoire de travail dans le conteneur
+WORKDIR /app
+
+# 3. Copie les fichiers de dépendances
+COPY package*.json ./
+
+# 4. Installe les dépendances Node.js
+RUN npm install
+
+# 5. Copie l'ensemble des fichiers du projet dans le conteneur
+COPY . .
+
+# 6. S'assure que le dossier repository existe
+RUN mkdir -p /app/repository
+
+# 7. Expose le port de l'application (ajustez le port si votre serveur utilise un autre port)
+EXPOSE 3000
+
+# 8. Commande pour démarrer l'application
+CMD ["npm", "run", "dev"]
