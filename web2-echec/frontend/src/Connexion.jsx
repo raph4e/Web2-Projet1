@@ -1,6 +1,6 @@
 function Connexion({ onConnexion }) {
     const seConnecterAvecGithub = () => {
-        onConnexion(true);
+        window.location.href = "http://localhost:3000/api/auth/github";
     };
 
     return (

@@ -1,8 +1,17 @@
-function CreerPartiePrive({ onCreer, onJoindre }) {
+function CreerPartiePrive({ onCreer, onJoindre, message }) {
     return (
         <div className="hero-body">
             <div className="container is-flex is-justify-content-center">
-                <div className="box has-text-centered" style={{ width: "400px" }}>
+                <div className="has-text-centered" style={{ width: "400px", position: "relative" }}>
+                    {message && (
+                        <p
+                            className="has-text-black is-size-5 has-text-weight-bold"
+                            style={{ position: "absolute", bottom: "calc(100% + 1rem)", width: "100%" }}
+                        >
+                            {message}
+                        </p>
+                    )}
+                    <div className="box has-text-centered">
                     <h1 className="title">Choisir une option</h1>
                     <button
                         className="button is-dark is-fullwidth"
@@ -16,6 +25,7 @@ function CreerPartiePrive({ onCreer, onJoindre }) {
                     >
                         Joindre une partie
                     </button>
+                    </div>
                 </div>
             </div>
         </div>

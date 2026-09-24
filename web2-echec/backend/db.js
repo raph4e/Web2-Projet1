@@ -1,12 +1,21 @@
 import sqlite3 from "sqlite3";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const db = new sqlite3.Database("./db.sqlite3");
+// Déclaration du chemin vers la base de données SQLite3. Le fichier sera créé dans le même dossier que ce fichier.
+const databasePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "db.sqlite3");
+const db = new sqlite3.Database(databasePath);
 
+// Création des tables "joueurs", "parties" et "coups" si elles n'existent pas déjà. 
 db.serialize(() => {
     db.run(`
         CREATE TABLE IF NOT EXISTS joueurs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT NOT NULL UNIQUE,
+            githubId INTEGER,
+            login TEXT,
+            name TEXT,
+            avatarUrl TEXT,
             elo INTEGER NOT NULL DEFAULT 1000
         )
     `);

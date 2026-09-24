@@ -1,19 +1,26 @@
-function JoindrePartie({ onRetour }) {
-    const joindrePartie = (event) => {
+function JoindrePartie({ onRejoint }) {
+
+    // Permet de joindre une partie en soumettant le code de la partie à l'API du backend.
+    const joindrePartie = async (event) => {
         event.preventDefault();
-        console.log("Code de partie :", event.currentTarget.codePartie.value);
+        const code = event.currentTarget.codePartie.value.trim().toUpperCase();
+        const response = await fetch(`http://localhost:3000/api/parties/${code}/rejoindre`, {
+            method: "POST",
+            credentials: "include",
+        });
+
+        // Si réussi, appelle la fonction onRejoint avec le code de la partie et le nom de l'adversaire.
+        if (response.ok) {
+            const partie = await response.json();
+            onRejoint(code, partie.adversaire);
+        } else {
+            const resultat = await response.json();
+            alert(resultat.erreur ?? "Impossible de rejoindre cette partie.");
+        }
     };
 
     return (
         <div className="hero-body p-0">
-            <button
-                className="button is-white is-medium"
-                style={{ position: "fixed", top: "1rem", left: "1rem", zIndex: 10 }}
-                type="button"
-                onClick={onRetour}
-            >
-                Retour
-            </button>
             <div className="container pt-4">
                 <div className="is-flex is-justify-content-center">
                 <div className="box has-text-centered" style={{ width: "400px" }}>
