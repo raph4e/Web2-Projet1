@@ -13,10 +13,11 @@
   },
   "dependencies": {
     "bulma": "^1.0.4",
-    "chess.js": "^1.4.0",
+    "chess.js": "^1.0.0-beta.6",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "react": "^19.2.8",
+    "react-chessboard": "^4.7.3",
     "react-dom": "^19.2.8",
     "sqlite3": "^6.0.1"
   },
