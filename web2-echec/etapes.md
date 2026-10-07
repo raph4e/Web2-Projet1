@@ -90,3 +90,13 @@ frontend/src/
 ├── AttentePartie.jsx       # Attente du deuxieme joueur
 └── Echiquier.jsx           # Affichage de l'echiquier
 ```
+## Exigences techniques
+- [x] Express pour l'API, React Router en mode framework pour le client, rendu côté serveur là où c'est bénéfique.
+- [] La position vit dans la base (FEN et liste des coups), pas dans la mémoire du serveur : une partie survit à un redémarrage.
+- [] La mise à jour de l'échiquier adverse se fait par interrogation périodique de l'API.
+- [] Tout le SQL dans repository/ ; SQLite (node:sqlite), le fichier de base sur un volume Docker.
+- [] Tests d'intégration de l'API.
+- [] .github/workflows/ci.yml : les tests à chaque push sur main, si les tests passent, les images publiées sur ghcr.io avec les tags latest et sha-.
+- [] deploy/compose.yml avec image: et non build:, le compte et le tag lus dans un .env posé à côté, hors dépôt, qui démarre l'application sur une machine où il n'y a que Docker.
+- [] Les secrets (ex : identifiant et secret de l'application GitHub OAuth, clé de session) dans l'environnement, jamais dans le dépôt.
+- [] deploy/.env.example : les variables attendues, avec des valeurs d'exemple, et un README.md qui dit comment démarrer l'application, en développement et sur la machine de déploiement.
