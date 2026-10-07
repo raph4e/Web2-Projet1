@@ -10,11 +10,16 @@
 - [x] Creer une partie privee
 - [x] Rejoindre une partie avec un code
 - [x] Afficher l'echiquier
-- [ ] Valider les coups cote serveur
+- [ ] Valider les coups cote serveur - Kerian
 - [x] Faire communiquer les deux navigateurs
 - [x] Gerer le depart d'un joueur
-- [ ] Gerer la fin d'une partie
-- [ ] Calculer le classement ELO
+- [ ] Gerer la fin d'une partie - Kerian
+- [ ] Calculer le classement ELO - Kerian
+- [ ] Test unitaires - Andy
+- [ ] CI - Daniel
+- [ ] Server-side rendering, rôles et autorisation - Raf
+- [ ] S'assurer que le projet respecte les exigences techniques - Raf
+- [ ] Remise / Vérifier qu'etapes.md est mis à jour - Raf
 
 ## Structure de la base de donnees
 
