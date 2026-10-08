@@ -1,8 +1,43 @@
 import db from "../db.js";
 import { randomBytes } from "node:crypto";
 
+function createInitialMove(gameId, FEN) {
+    return new Promise((resolve, reject) => {
+        db.run(
+            "INSERT INTO coups (partie_id, FEN) VALUES (?, ?)",
+            [gameId, FEN],
+            (error) => {
+                if (error) reject(error);
+                else resolve();
+            },
+        );
+    });
+}
+
+export function updateGameFEN(gameId, FEN, playerId) {
+    return new Promise((resolve, reject) => {
+        db.run(
+            `UPDATE coups
+             SET FEN = ?
+             WHERE partie_id = ?
+               AND EXISTS (
+                   SELECT 1
+                   FROM parties
+                   WHERE parties.id = coups.partie_id
+                     AND parties.statut = 'en_cours'
+                     AND (parties.joueur_blanc_id = ? OR parties.joueur_noir_id = ?)
+               )`,
+            [FEN, gameId, playerId, playerId],
+            function (error) {
+                if (error) reject(error);
+                else resolve(this.changes > 0);
+            },
+        );
+    });
+}
+
 // Crée une partie si le joueur n'en a pas déjà une active.
-export function createGame(playerId) {
+export function createGame(playerId, FEN) {
     return new Promise((resolve, reject) => {
         // Vérifie si le joueur a déjà une partie en cours ou en attente
         db.get(
@@ -26,9 +61,20 @@ export function createGame(playerId) {
                 db.run(
                     "INSERT INTO parties (code, joueur_blanc_id) VALUES (?, ?)",
                     [code, playerId],
-                    (insertError) => {
-                        if (insertError) reject(insertError);
-                        else resolve(code);
+                    function (insertError) {
+                        if (insertError) {
+                            reject(insertError);
+                            return;
+                        }
+
+                        const gameId = this.lastID;
+                        createInitialMove(gameId, FEN)
+                            .then(() => resolve(code))
+                            .catch((moveError) => {
+                                db.run("DELETE FROM parties WHERE id = ?", [gameId], (deleteError) => {
+                                    reject(deleteError ?? moveError);
+                                });
+                            });
                     },
                 );
             },
@@ -40,7 +86,7 @@ export function createGame(playerId) {
 export function findGame(code) {
     return new Promise((resolve, reject) => {
         db.get(
-            `SELECT parties.code, parties.statut, parties.resultat,
+            `SELECT parties.id, parties.code, parties.statut, parties.resultat,
                     blanc.login AS joueur_blanc_login,
                     noir.login AS joueur_noir_login
              FROM parties

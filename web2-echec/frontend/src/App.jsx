@@ -5,6 +5,7 @@ import JoindrePartie from "./JoindrePartie";
 import Echiquier from "./Echiquier";
 import AttentePartie from "./AttentePartie";
 import { useEffect, useRef, useState } from "react";
+import { Chess } from "chess.js";
 
 function App() {
 
@@ -14,9 +15,11 @@ function App() {
     // Indique la page actuelle : "choix", "attente", "joindre", "echiquier" ou "terminee"
     const [page, setPage] = useState("choix");
     const [codePartie, setCodePartie] = useState(null);
+    const [partieId, setPartieId] = useState(null);
     const [adversaire, setAdversaire] = useState(null);
     const [monTour, setMonTour] = useState(false);
     const [partieQuittee, setPartieQuittee] = useState(null);
+    const [erreurSauvegarde, setErreurSauvegarde] = useState(null);
     const pagePrecedente = useRef("choix");
 
     // Vérifie si l'utilisateur est déjà connecté en récupérant les informations de son compte depuis le backend
@@ -39,9 +42,11 @@ function App() {
             });
             if (!response.ok) return;
             const partie = await response.json();
+            setPartieId(partie.id);
             if (partie.statut === "quitte") {
                 setPartieQuittee(`${partie.resultat} a quitté la partie`);
                 setCodePartie(null);
+                setPartieId(null);
                 setAdversaire(null);
                 setMonTour(false);
                 setPage("choix");
@@ -85,13 +90,35 @@ function App() {
         const response = await fetch("http://localhost:3000/api/parties", {
             method: "POST",
             credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ FEN: new Chess().fen() }),
         });
         if (!response.ok) return;
         const partie = await response.json();
         setCodePartie(partie.code);
+        setPartieId(null);
         setAdversaire(null);
         setPartieQuittee(null);
+        setErreurSauvegarde(null);
         setPage("attente");
+    };
+
+    const sauvegarderPosition = async (FEN) => {
+        try {
+            const response = await fetch(`http://localhost:3000/api/parties/${partieId}/fen`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ FEN }),
+            });
+            if (!response.ok) {
+                const resultat = await response.json();
+                throw new Error(resultat.erreur ?? "Impossible d'enregistrer la position.");
+            }
+            setErreurSauvegarde(null);
+        } catch (error) {
+            setErreurSauvegarde(error.message);
+        }
     };
 
     // Retourne à la page de choix de création ou de jonction de partie, en supprimant la partie si l'utilisateur était dans une partie en attente ou en cours.
@@ -103,9 +130,11 @@ function App() {
             });
         }
         setCodePartie(null);
+        setPartieId(null);
         setAdversaire(null);
         setMonTour(false);
         setPartieQuittee(null);
+        setErreurSauvegarde(null);
         setPage("choix");
     };
 
@@ -117,9 +146,11 @@ function App() {
         });
         setCompte(null);
         setCodePartie(null);
+        setPartieId(null);
         setAdversaire(null);
         setMonTour(false);
         setPartieQuittee(null);
+        setErreurSauvegarde(null);
         setPage("choix");
     };
 
@@ -152,6 +183,8 @@ function App() {
                             adversaire={adversaire}
                             monTour={monTour}
                             partieQuittee={partieQuittee}
+                            onMove={sauvegarderPosition}
+                            erreurSauvegarde={erreurSauvegarde}
                         />
                     ) : page === "joindre" ? (
                         <JoindrePartie onRejoint={(code, nomAdversaire) => {
@@ -180,4 +213,3 @@ function App() {
 }
 
 export default App;
-

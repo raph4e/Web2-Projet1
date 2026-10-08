@@ -2,7 +2,7 @@ import cors from "cors";
 import express from "express";
 import { auth, currentAccount } from "./auth.js";
 import { findAllAccounts } from "./repository/joueurs.js";
-import { createGame, findGame, joinGame, leaveGame } from "./repository/parties.js";
+import { createGame, findGame, joinGame, leaveGame, updateGameFEN } from "./repository/parties.js";
 
 const app = express();
 const PORT = 3000;
@@ -31,10 +31,39 @@ app.post("/api/parties", async (req, res) => {
     const account = await currentAccount(req);
     if (!account) return res.status(401).json({ erreur: "Non connecté." });
 
+    const { FEN } = req.body ?? {};
+    if (typeof FEN !== "string" || FEN.trim().length === 0) {
+        return res.status(400).json({ erreur: "Un FEN non vide est requis." });
+    }
+
     try {
-        const code = await createGame(account.id);
+        const code = await createGame(account.id, FEN);
         if (!code) return res.status(409).json({ erreur: "Vous êtes déjà dans une partie." });
         res.status(201).json({ code });
+    } catch (err) {
+        res.status(500).json({ erreur: err.message });
+    }
+});
+
+app.patch("/api/parties/:id/fen", async (req, res) => {
+    const account = await currentAccount(req);
+    if (!account) return res.status(401).json({ erreur: "Non connecté." });
+
+    const gameId = Number(req.params.id);
+    const { FEN } = req.body ?? {};
+    if (
+        !Number.isSafeInteger(gameId) ||
+        gameId <= 0 ||
+        typeof FEN !== "string" ||
+        FEN.trim().length === 0
+    ) {
+        return res.status(400).json({ erreur: "Un identifiant de partie positif et un FEN non vide sont requis." });
+    }
+
+    try {
+        const updated = await updateGameFEN(gameId, FEN, account.id);
+        if (!updated) return res.status(404).json({ erreur: "Partie introuvable ou non accessible." });
+        res.json({ partie_id: gameId, FEN });
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }
