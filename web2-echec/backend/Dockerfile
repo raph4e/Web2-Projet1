@@ -10,8 +10,8 @@ WORKDIR /app
 # Copie des fichiers de dépendances
 COPY package*.json ./
 
-# Installation des dépendances
-RUN npm install
+# Installation des dépendances et compilation de sqlite3 pour cette image Linux
+RUN npm install --build-from-source
 
 # Copie du reste du code source
 COPY . .

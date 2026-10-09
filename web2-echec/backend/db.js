@@ -4,7 +4,10 @@ import { fileURLToPath } from "node:url";
 
 // Déclaration du chemin vers la base de données SQLite3. Le fichier sera créé dans le même dossier que ce fichier.
 const databasePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "db.sqlite3");
-const db = new sqlite3.Database(databasePath);
+const db = new sqlite3.Database(
+    databasePath,
+    sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
+);
 
 // Création des tables "joueurs", "parties" et "coups" si elles n'existent pas déjà. 
 db.serialize(() => {
@@ -41,13 +44,9 @@ db.serialize(() => {
         CREATE TABLE IF NOT EXISTS coups (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             partie_id INTEGER NOT NULL,
-            joueur_id INTEGER NOT NULL,
-            numero INTEGER NOT NULL,
-            coup TEXT NOT NULL,
-            date_coup DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FEN TEXT,
 
-            FOREIGN KEY (partie_id) REFERENCES parties(id),
-            FOREIGN KEY (joueur_id) REFERENCES joueurs(id)
+            FOREIGN KEY (partie_id) REFERENCES parties(id)
         )
     `);
 });

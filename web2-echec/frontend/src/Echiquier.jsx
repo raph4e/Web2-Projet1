@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-function Echiquier({ adversaire, monTour, partieQuittee, onMove }) {
+function Echiquier({ adversaire, monTour, partieQuittee, onMove, erreurSauvegarde }) {
     const [nombrePoints, setNombrePoints] = useState(1);
     const [game, setGame] = useState(new Chess());
 
@@ -33,7 +33,10 @@ function Echiquier({ adversaire, monTour, partieQuittee, onMove }) {
             if (result) {
                 setGame(gameCopy);
                 if (onMove) {
-                    onMove(result, gameCopy);
+                    const scoreBlanc = gameCopy.isCheckmate()
+                        ? gameCopy.turn() === "b" ? 1 : 0
+                        : gameCopy.isDraw() || gameCopy.isStalemate() ? 0.5 : null;
+                    onMove(gameCopy.fen(), scoreBlanc);
                 }
                 return true;
             }
@@ -61,6 +64,11 @@ function Echiquier({ adversaire, monTour, partieQuittee, onMove }) {
                 <h1 className="title has-text-centered has-text-white">
                     {getTitreMessage()}
                 </h1>
+                {erreurSauvegarde && (
+                    <p className="has-text-danger-light mb-4" role="alert">
+                        Erreur lors de l'enregistrement : {erreurSauvegarde}
+                    </p>
+                )}
 
                 {partieQuittee || game.isGameOver() ? (
                     <p className="has-text-white mb-4">
