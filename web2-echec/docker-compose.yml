@@ -8,7 +8,6 @@ services:
     volumes:
       - ./backend:/app
       - backend_node_modules:/app/node_modules
-      - ./backend/db.sqlite3:/app/db.sqlite3
     environment:
       - PORT=3000
 
