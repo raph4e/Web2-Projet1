@@ -1,4 +1,4 @@
-import { currentAccount } from "./auth";
+import { currentAccount } from "./auth.js";
 
 // Middleware qui vérifie si l'utilisateur est connecté avant d'accéder à certaines routes. Si l'utilisateur n'est pas connecté, renvoie une erreur 401.
 export async function requireAccount(req, res, next) {
