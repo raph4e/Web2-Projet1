@@ -3,6 +3,7 @@ import express from "express";
 import { auth, currentAccount } from "./auth.js";
 import { findAllAccounts } from "./repository/joueurs.js";
 import { createGame, findGame, joinGame, leaveGame } from "./repository/parties.js";
+import { requireAccount } from "./authorization.js";
 
 const app = express();
 const PORT = 3000;
@@ -27,10 +28,7 @@ app.get("/api/joueurs", async (req, res) => {
 });
 
 // Route pour créer une partie si le joueur est connecté. Retourne le code de la partie créée ou une erreur si le joueur est déjà dans une partie.
-app.post("/api/parties", async (req, res) => {
-    const account = await currentAccount(req);
-    if (!account) return res.status(401).json({ erreur: "Non connecté." });
-
+app.post("/api/parties", requireAccount, async (req, res) => {
     try {
         const code = await createGame(account.id);
         if (!code) return res.status(409).json({ erreur: "Vous êtes déjà dans une partie." });
@@ -52,10 +50,7 @@ app.get("/api/parties/:code", async (req, res) => {
 });
 
 // Route pour supprimer une partie si le joueur est connecté et appartient à la partie. Retourne une erreur si la partie n'existe pas ou si le joueur n'appartient pas à la partie.
-app.delete("/api/parties/:code", async (req, res) => {
-    const account = await currentAccount(req);
-    if (!account) return res.status(401).json({ erreur: "Non connecté." });
-
+app.delete("/api/parties/:code", requireAccount, async (req, res) => {
     try {
         const left = await leaveGame(req.params.code.toUpperCase(), account.id);
         if (!left) return res.status(404).json({ erreur: "Partie introuvable." });
@@ -66,10 +61,7 @@ app.delete("/api/parties/:code", async (req, res) => {
 });
 
 // Route pour rejoindre une partie si le joueur est connecté et que la partie est en attente. Retourne une erreur si la partie n'existe pas ou si elle n'est pas en attente.
-app.post("/api/parties/:code/rejoindre", async (req, res) => {
-    const account = await currentAccount(req);
-    if (!account) return res.status(401).json({ erreur: "Non connecté." });
-
+app.post("/api/parties/:code/rejoindre", requireAccount, async (req, res) => {
     try {
         const game = await joinGame(req.params.code.toUpperCase(), account.id);
         if (!game) return res.status(409).json({ erreur: "Cette partie n'est pas disponible." });
