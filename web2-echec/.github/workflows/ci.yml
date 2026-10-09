@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  image:
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - run: |
+          OWNER=${GITHUB_REPOSITORY_OWNER,,}
+          SHA=sha-${GITHUB_SHA::7}
+
+          docker build -f backend/Dockerfile \
+            -t ghcr.io/$OWNER/web2-echec-backend:latest \
+            -t ghcr.io/$OWNER/web2-echec-backend:$SHA backend
+          docker push --all-tags ghcr.io/$OWNER/web2-echec-backend
+
+          docker build -f frontend/Dockerfile \
+            -t ghcr.io/$OWNER/web2-echec-frontend:latest \
+            -t ghcr.io/$OWNER/web2-echec-frontend:$SHA frontend
+          docker push --all-tags ghcr.io/$OWNER/web2-echec-frontend
