@@ -103,7 +103,7 @@ function App() {
         setPage("attente");
     };
 
-    const sauvegarderPosition = async (FEN) => {
+    const sauvegarderPosition = async (FEN, scoreBlanc) => {
         try {
             const response = await fetch(`http://localhost:3000/api/parties/${partieId}/fen`, {
                 method: "PATCH",
@@ -115,6 +115,23 @@ function App() {
                 const resultat = await response.json();
                 throw new Error(resultat.erreur ?? "Impossible d'enregistrer la position.");
             }
+
+            if (scoreBlanc !== null) {
+                const finResponse = await fetch(
+                    `http://localhost:3000/api/parties/${codePartie}/terminer`,
+                    {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ scoreBlanc }),
+                    },
+                );
+                if (!finResponse.ok) {
+                    const resultat = await finResponse.json();
+                    throw new Error(resultat.erreur ?? "Impossible de terminer la partie.");
+                }
+            }
+
             setErreurSauvegarde(null);
         } catch (error) {
             setErreurSauvegarde(error.message);

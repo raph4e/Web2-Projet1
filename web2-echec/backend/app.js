@@ -2,7 +2,14 @@ import cors from "cors";
 import express from "express";
 import { auth, currentAccount } from "./auth.js";
 import { findAllAccounts } from "./repository/joueurs.js";
-import { createGame, findGame, joinGame, leaveGame, updateGameFEN } from "./repository/parties.js";
+import {
+    createGame,
+    findGame,
+    joinGame,
+    leaveGame,
+    updateGameFEN,
+    updatePlayersElo,
+} from "./repository/parties.js";
 
 const app = express();
 const PORT = 3000;
@@ -38,13 +45,13 @@ app.post("/api/parties", async (req, res) => {
 
     try {
         const code = await createGame(account.id, FEN);
-        if (!code) return res.status(409).json({ erreur: "Vous êtes déjà dans une partie." });
         res.status(201).json({ code });
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }
 });
 
+// Route pour update la partie en cours
 app.patch("/api/parties/:id/fen", async (req, res) => {
     const account = await currentAccount(req);
     if (!account) return res.status(401).json({ erreur: "Non connecté." });
@@ -64,6 +71,28 @@ app.patch("/api/parties/:id/fen", async (req, res) => {
         const updated = await updateGameFEN(gameId, FEN, account.id);
         if (!updated) return res.status(404).json({ erreur: "Partie introuvable ou non accessible." });
         res.json({ partie_id: gameId, FEN });
+    } catch (err) {
+        res.status(500).json({ erreur: err.message });
+    }
+});
+
+app.post("/api/parties/:code/terminer", async (req, res) => {
+    const account = await currentAccount(req);
+    if (!account) return res.status(401).json({ erreur: "Non connecté." });
+
+    const { scoreBlanc } = req.body ?? {};
+    if (![0, 0.5, 1].includes(scoreBlanc)) {
+        return res.status(400).json({ erreur: "Le score des blancs doit être 0, 0.5 ou 1." });
+    }
+
+    try {
+        const updated = await updatePlayersElo(
+            req.params.code.toUpperCase(),
+            account.id,
+            scoreBlanc,
+        );
+        if (!updated) return res.status(409).json({ erreur: "Cette partie est déjà terminée ou inaccessible." });
+        res.json({ statut: "terminee" });
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }

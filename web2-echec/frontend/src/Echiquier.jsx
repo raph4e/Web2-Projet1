@@ -33,7 +33,10 @@ function Echiquier({ adversaire, monTour, partieQuittee, onMove, erreurSauvegard
             if (result) {
                 setGame(gameCopy);
                 if (onMove) {
-                    onMove(gameCopy.fen());
+                    const scoreBlanc = gameCopy.isCheckmate()
+                        ? gameCopy.turn() === "b" ? 1 : 0
+                        : gameCopy.isDraw() || gameCopy.isStalemate() ? 0.5 : null;
+                    onMove(gameCopy.fen(), scoreBlanc);
                 }
                 return true;
             }
