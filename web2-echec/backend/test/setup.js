@@ -13,3 +13,5 @@ class BaseEnMemoire extends sqlite3.Database {
 mock.module('sqlite3', {
   defaultExport: { ...sqlite3, Database: BaseEnMemoire },
 });
+
+//test
