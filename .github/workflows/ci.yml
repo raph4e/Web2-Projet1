@@ -17,11 +17,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: web2-echec/backend/package-lock.json
+          cache-dependency-path: backend/package-lock.json
       - run: npm ci
-        working-directory: web2-echec/backend
+        working-directory: backend
       - run: npm test
-        working-directory: web2-echec/backend
+        working-directory: backend
 
   frontend:
     name: Frontend checks
@@ -32,13 +32,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: web2-echec/frontend/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-        working-directory: web2-echec/frontend
+        working-directory: frontend
       - run: npm run lint
-        working-directory: web2-echec/frontend
+        working-directory: frontend
       - run: npm run build
-        working-directory: web2-echec/frontend
+        working-directory: frontend
 
   image:
     needs: [backend, frontend]
@@ -63,15 +63,15 @@ jobs:
           SHA=sha-${GITHUB_SHA::7}
 
           # Backend
-          docker build -f web2-echec/backend/Dockerfile \
-            -t ghcr.io/$OWNER/web2-echec-backend:latest \
-            -t ghcr.io/$OWNER/web2-echec-backend:$SHA web2-echec/backend
-          docker push ghcr.io/$OWNER/web2-echec-backend:latest
-          docker push ghcr.io/$OWNER/web2-echec-backend:$SHA
+          docker build -f backend/Dockerfile \
+            -t ghcr.io/$OWNER/backend:latest \
+            -t ghcr.io/$OWNER/backend:$SHA backend
+          docker push ghcr.io/$OWNER/backend:latest
+          docker push ghcr.io/$OWNER/backend:$SHA
 
           # Frontend
-          docker build -f web2-echec/frontend/Dockerfile \
-            -t ghcr.io/$OWNER/web2-echec-frontend:latest \
-            -t ghcr.io/$OWNER/web2-echec-frontend:$SHA web2-echec/frontend
-          docker push ghcr.io/$OWNER/web2-echec-frontend:latest
-          docker push ghcr.io/$OWNER/web2-echec-frontend:$SHA
+          docker build -f frontend/Dockerfile \
+            -t ghcr.io/$OWNER/frontend:latest \
+            -t ghcr.io/$OWNER/frontend:$SHA frontend
+          docker push ghcr.io/$OWNER/frontend:latest
+          docker push ghcr.io/$OWNER/frontend:$SHA
