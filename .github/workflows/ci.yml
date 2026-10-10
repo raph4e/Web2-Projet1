@@ -41,6 +41,7 @@ jobs:
         working-directory: web2-echec/frontend
 
   image:
+    name: Build et push des images
     needs: [backend, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -49,8 +50,12 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - run: |
+
+      - name: Connexion à ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build et push
+        run: |
           OWNER=${GITHUB_REPOSITORY_OWNER,,}
           SHA=sha-${GITHUB_SHA::7}
 
@@ -64,44 +69,44 @@ jobs:
             -t ghcr.io/$OWNER/web2-echec-frontend:$SHA web2-echec/frontend
           docker push --all-tags ghcr.io/$OWNER/web2-echec-frontend
 
-          compose:
-            name: Smoke test compose
-            needs: image
-            runs-on: ubuntu-latest
-            permissions:
-              contents: read
-              packages: read
-            steps:
-              - uses: actions/checkout@v4
-        
-              - name: Connexion à ghcr.io
-                run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-        
-              - name: Préparer le .env de test
-                run: |
-                  OWNER=${GITHUB_REPOSITORY_OWNER,,}
-                  {
-                    echo "BACKEND_IMAGE=ghcr.io/$OWNER/web2-echec-backend"
-                    echo "BACKEND_TAG=sha-${GITHUB_SHA::7}"
-                    echo "FRONTEND_IMAGE=ghcr.io/$OWNER/web2-echec-frontend"
-                    echo "FRONTEND_TAG=sha-${GITHUB_SHA::7}"
-                    echo "GITHUB_CLIENT_ID=ci-test"
-                    echo "GITHUB_CLIENT_SECRET=ci-test"
-                    echo "SESSION_SECRET=ci-test-secret"
-                  } > web2-echec/.env
-        
-              - name: Démarrer les conteneurs
-                run: docker compose -f web2-echec/docker-compose.yml --env-file web2-echec/.env up -d
-        
-              - name: Vérifier que le backend répond
-                run: |
-                  for i in $(seq 1 15); do
-                    if curl -fs http://localhost:3000/; then exit 0; fi
-                    sleep 2
-                  done
-                  docker compose -f web2-echec/docker-compose.yml --env-file web2-echec/.env logs
-                  exit 1
-        
-              - name: Arrêter les conteneurs
-                if: always()
-                run: docker compose -f web2-echec/docker-compose.yml --env-file web2-echec/.env down -v
+  compose:
+    name: Smoke test compose
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Connexion à ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Préparer le .env de test
+        run: |
+          OWNER=${GITHUB_REPOSITORY_OWNER,,}
+          {
+            echo "BACKEND_IMAGE=ghcr.io/$OWNER/web2-echec-backend"
+            echo "BACKEND_TAG=sha-${GITHUB_SHA::7}"
+            echo "FRONTEND_IMAGE=ghcr.io/$OWNER/web2-echec-frontend"
+            echo "FRONTEND_TAG=sha-${GITHUB_SHA::7}"
+            echo "GITHUB_CLIENT_ID=ci-test"
+            echo "GITHUB_CLIENT_SECRET=ci-test"
+            echo "SESSION_SECRET=ci-test-secret"
+          } > web2-echec/.env
+
+      - name: Démarrer les conteneurs
+        run: docker compose -f web2-echec/docker-compose.yml --env-file web2-echec/.env up -d
+
+      - name: Vérifier que le backend répond
+        run: |
+          for i in $(seq 1 15); do
+            if curl -fs http://localhost:3000/; then exit 0; fi
+            sleep 2
+          done
+          docker compose -f web2-echec/docker-compose.yml --env-file web2-echec/.env logs
+          exit 1
+
+      - name: Arrêter les conteneurs
+        if: always()
+        run: docker compose -f web2-echec/docker-compose.yml --env-file web2-echec/.env down -v
