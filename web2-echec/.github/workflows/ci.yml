@@ -4,6 +4,7 @@ on:
   push:
   pull_request:
 
+
 permissions:
   contents: read
 
@@ -63,3 +64,4 @@ jobs:
             -t ghcr.io/$OWNER/web2-echec-frontend:latest \
             -t ghcr.io/$OWNER/web2-echec-frontend:$SHA frontend
           docker push --all-tags ghcr.io/$OWNER/web2-echec-frontend
+
