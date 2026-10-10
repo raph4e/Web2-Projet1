@@ -8,11 +8,15 @@
    cp .env.example .env
 ```
 Variables à renseigner :
-`GHCR_OWNER` : raph4e
-`IMAGE_TAG` : latest 
-`GITHUB_CLIENT_ID` : À récupérer GitHub → Settings → Developer settings → OAuth Apps → New OAuth App
-`GITHUB_CLIENT_SECRET` : À récupérer
-`SESSION_SECRET` : openssl rand -hex 32
+-`GHCR_OWNER` : raph4e
+-`IMAGE_TAG` : latest
+-`BACKEND_IMAGE` : ghcr.io/raph4e/web2-echec-backend
+-`BACKEND_TAG` : latest
+-`FRONTEND_IMAGE` : ghcr.io/raph4e/web2-echec-frontend
+-`FRONTEND_TAG` : latest
+-`GITHUB_CLIENT_ID` : exemple_client_id
+-`GITHUB_CLIENT_SECRET` : exemple_client_secret
+-`SESSION_SECRET` : exemple_session_secret
 
 3. Lancer l'application :
 ```bash
