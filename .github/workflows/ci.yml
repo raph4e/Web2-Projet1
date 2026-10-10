@@ -49,17 +49,29 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - run: |
+
+      - name: Log in to the Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push images
+        run: |
           OWNER=${GITHUB_REPOSITORY_OWNER,,}
           SHA=sha-${GITHUB_SHA::7}
 
+          # Backend
           docker build -f web2-echec/backend/Dockerfile \
             -t ghcr.io/$OWNER/web2-echec-backend:latest \
             -t ghcr.io/$OWNER/web2-echec-backend:$SHA web2-echec/backend
-          docker push --all-tags ghcr.io/$OWNER/web2-echec-backend
+          docker push ghcr.io/$OWNER/web2-echec-backend:latest
+          docker push ghcr.io/$OWNER/web2-echec-backend:$SHA
 
+          # Frontend
           docker build -f web2-echec/frontend/Dockerfile \
             -t ghcr.io/$OWNER/web2-echec-frontend:latest \
             -t ghcr.io/$OWNER/web2-echec-frontend:$SHA web2-echec/frontend
-          docker push --all-tags ghcr.io/$OWNER/web2-echec-frontend
+          docker push ghcr.io/$OWNER/web2-echec-frontend:latest
+          docker push ghcr.io/$OWNER/web2-echec-frontend:$SHA

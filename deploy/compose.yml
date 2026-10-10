@@ -1,0 +1,19 @@
+services:
+  backend:
+    image: ghcr.io/${REGISTRY_OWNER}/backend:${IMAGE_TAG}
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - SESSION_SECRET=${SESSION_SECRET}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+    restart: always
+
+  frontend:
+    image: ghcr.io/${REGISTRY_OWNER}/frontend:${IMAGE_TAG}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: always
