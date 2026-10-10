@@ -1,20 +1,19 @@
-version: '3.8'
-
 services:
   backend:
-    image: "${BACKEND_IMAGE}:${BACKEND_TAG}" 
+    image: "${BACKEND_IMAGE}:${BACKEND_TAG}"
     ports:
       - "3000:3000"
-    env_file:
-      - ./backend/.env
     environment:
-      - PORT=3000
+      PORT: 3000
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
 
   frontend:
-    image: "${FRONTEND_IMAGE}:${FRONTEND_TAG}" 
+    image: "${FRONTEND_IMAGE}:${FRONTEND_TAG}"
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=${VITE_API_URL}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
     depends_on:
       - backend
