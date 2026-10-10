@@ -36,8 +36,6 @@ app.get("/api/joueurs", async (req, res) => {
 
 // Route pour créer une partie si le joueur est connecté. Retourne le code de la partie créée ou une erreur si le joueur est déjà dans une partie.
 app.post("/api/parties", requireAccount, async (req, res) => {
-    const account = await currentAccount(req);
-    if (!account) return res.status(401).json({ erreur: "Non connecté." });
 
     const { FEN } = req.body ?? {};
     if (typeof FEN !== "string" || FEN.trim().length === 0) {
@@ -45,7 +43,7 @@ app.post("/api/parties", requireAccount, async (req, res) => {
     }
 
     try {
-        const code = await createGame(account.id, FEN);
+        const code = await createGame(req.account.id, FEN);
         res.status(201).json({ code });
     } catch (err) {
         res.status(500).json({ erreur: err.message });
@@ -53,9 +51,7 @@ app.post("/api/parties", requireAccount, async (req, res) => {
 });
 
 // Route pour update la partie en cours
-app.patch("/api/parties/:id/fen", async (req, res) => {
-    const account = await currentAccount(req);
-    if (!account) return res.status(401).json({ erreur: "Non connecté." });
+app.patch("/api/parties/:id/fen", requireAccount, async (req, res) => {
 
     const gameId = Number(req.params.id);
     const { FEN } = req.body ?? {};
@@ -69,7 +65,7 @@ app.patch("/api/parties/:id/fen", async (req, res) => {
     }
 
     try {
-        const updated = await updateGameFEN(gameId, FEN, account.id);
+        const updated = await updateGameFEN(gameId, FEN, req.account.id);
         if (!updated) return res.status(404).json({ erreur: "Partie introuvable ou non accessible." });
         res.json({ partie_id: gameId, FEN });
     } catch (err) {
@@ -77,9 +73,7 @@ app.patch("/api/parties/:id/fen", async (req, res) => {
     }
 });
 
-app.post("/api/parties/:code/terminer", async (req, res) => {
-    const account = await currentAccount(req);
-    if (!account) return res.status(401).json({ erreur: "Non connecté." });
+app.post("/api/parties/:code/terminer", requireAccount, async (req, res) => {
 
     const { scoreBlanc } = req.body ?? {};
     if (![0, 0.5, 1].includes(scoreBlanc)) {
@@ -89,7 +83,7 @@ app.post("/api/parties/:code/terminer", async (req, res) => {
     try {
         const updated = await updatePlayersElo(
             req.params.code.toUpperCase(),
-            account.id,
+            req.account.id,
             scoreBlanc,
         );
         if (!updated) return res.status(409).json({ erreur: "Cette partie est déjà terminée ou inaccessible." });
@@ -113,7 +107,8 @@ app.get("/api/parties/:code", async (req, res) => {
 // Route pour supprimer une partie si le joueur est connecté et appartient à la partie. Retourne une erreur si la partie n'existe pas ou si le joueur n'appartient pas à la partie.
 app.delete("/api/parties/:code", requireAccount, async (req, res) => {
     try {
-        const left = await leaveGame(req.params.code.toUpperCase(), account.id);
+
+        const left = await leaveGame(req.params.code.toUpperCase(), req.account.id);
         if (!left) return res.status(404).json({ erreur: "Partie introuvable." });
         res.status(204).end();
     } catch (err) {
@@ -124,7 +119,7 @@ app.delete("/api/parties/:code", requireAccount, async (req, res) => {
 // Route pour rejoindre une partie si le joueur est connecté et que la partie est en attente. Retourne une erreur si la partie n'existe pas ou si elle n'est pas en attente.
 app.post("/api/parties/:code/rejoindre", requireAccount, async (req, res) => {
     try {
-        const game = await joinGame(req.params.code.toUpperCase(), account.id);
+        const game = await joinGame(req.params.code.toUpperCase(), req.account.id);
         if (!game) return res.status(409).json({ erreur: "Cette partie n'est pas disponible." });
         res.json({ statut: "en_cours", adversaire: game.adversaire });
     } catch (err) {
