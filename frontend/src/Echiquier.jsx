@@ -40,7 +40,7 @@ function Echiquier({ adversaire, monTour, partieQuittee, onMove, erreurSauvegard
                 }
                 return true;
             }
-        } catch (error) {
+        } catch {
             return false;
         }
         return false;
