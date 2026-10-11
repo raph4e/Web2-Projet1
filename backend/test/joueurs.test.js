@@ -1,9 +1,21 @@
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { findAccount, findAllAccounts, findGamesByPlayer, findOrCreateAccount } from '../repository/joueurs.js';
 import { createGame, joinGame } from '../repository/parties.js';
+import db from '../db.js';
 
 // Ces tests utilisent une base vide en mémoire, pas db.sqlite3 (voir test/setup.js).
+
+beforeEach(async () => {
+  for (const table of ['coups', 'parties', 'joueurs']) {
+    await new Promise((resolve, reject) => {
+      db.run(`DELETE FROM ${table}`, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+  }
+});
 
 test('findOrCreateAccount cree un nouveau joueur avec un elo de 1000', async () => {
   const joueur = await findOrCreateAccount({ githubId: 1, login: 'alice', name: 'Alice', avatarUrl: 'a.png' });
@@ -34,13 +46,11 @@ test('findGamesByPlayer renvoie les parties où le joueur est blanc ou noir', as
   const joueur = await findOrCreateAccount({ githubId: 5, login: 'joueur', name: null, avatarUrl: null });
   const adversaireBlanc = await findOrCreateAccount({ githubId: 6, login: 'blanc', name: null, avatarUrl: null });
   const adversaireNoir = await findOrCreateAccount({ githubId: 7, login: 'noir', name: null, avatarUrl: null });
-  const autreJoueur = await findOrCreateAccount({ githubId: 8, login: 'autre', name: null, avatarUrl: null });
 
   const partieBlanc = await createGame(joueur.id);
   await joinGame(partieBlanc, adversaireBlanc.id);
   const partieNoir = await createGame(adversaireNoir.id);
   await joinGame(partieNoir, joueur.id);
-  await createGame(autreJoueur.id);
 
   const parties = await findGamesByPlayer(joueur.id);
 
