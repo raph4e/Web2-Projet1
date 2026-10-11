@@ -56,7 +56,9 @@ export function findGame(code) {
         db.get(
             `SELECT parties.id, parties.code, parties.statut, parties.resultat,
                     blanc.login AS joueur_blanc_login,
-                    noir.login AS joueur_noir_login
+                    blanc.elo AS joueur_blanc_elo, 
+                    noir.login AS joueur_noir_login,
+                    noir.elo AS joueur_noir_elo
              FROM parties
              LEFT JOIN joueurs AS blanc ON blanc.id = parties.joueur_blanc_id
              LEFT JOIN joueurs AS noir ON noir.id = parties.joueur_noir_id

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-function Echiquier({ adversaire, monTour, partieQuittee, onMove, erreurSauvegarde }) {
+function Echiquier({ adversaire,eloBlanc,eloNoir, monTour, partieQuittee, onMove, erreurSauvegarde }) {
     const [nombrePoints, setNombrePoints] = useState(1);
     const [game, setGame] = useState(new Chess());
 
@@ -79,7 +79,19 @@ function Echiquier({ adversaire, monTour, partieQuittee, onMove, erreurSauvegard
                             : "La partie est terminée."}
                     </p>
                 ) : (
-                    <p className="has-text-white mb-4">Adversaire : <strong>{adversaire}</strong></p>
+                    <div className="has-text-white mb-4">
+                        {/* Affichage de l'adversaire et de son Elo */}
+                        <p>
+                            Adversaire : <strong>{adversaire}</strong> 
+                            {eloNoir && <span className="tag is-dark ml-2">Elo : {eloNoir}</span>}
+                        </p>
+                        {/* Affichage de ton Elo (Blancs) */}
+                        {eloBlanc && (
+                            <p className="is-size-7 mt-1">
+                                Mon Elo : <span className="has-text-weight-bold">{eloBlanc}</span>
+                            </p>
+                        )}
+                    </div>
                 )}
                 
                 {!partieQuittee && (
