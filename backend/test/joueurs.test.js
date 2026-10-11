@@ -49,6 +49,12 @@ test('findGamesByPlayer renvoie les parties où le joueur est blanc ou noir', as
 
   const partieBlanc = await createGame(joueur.id);
   await joinGame(partieBlanc, adversaireBlanc.id);
+  await new Promise((resolve, reject) => {
+    db.run("UPDATE parties SET statut = 'terminee' WHERE code = ?", [partieBlanc], (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
   const partieNoir = await createGame(adversaireNoir.id);
   await joinGame(partieNoir, joueur.id);
 

@@ -58,6 +58,9 @@ app.post("/api/parties", requireAccount, async (req, res) => {
 
     try {
         const code = await createGame(req.account.id, FEN);
+        if (!code) {
+            return res.status(409).json({ erreur: "Vous êtes déjà dans une partie active." });
+        }
         res.status(201).json({ code });
     } catch (err) {
         res.status(500).json({ erreur: err.message });
@@ -130,12 +133,12 @@ app.delete("/api/parties/:code", requireAccount, async (req, res) => {
     }
 });
 
-// Route pour rejoindre une partie si le joueur est connecté et que la partie est en attente. Retourne une erreur si la partie n'existe pas ou si elle n'est pas en attente.
+// Rejoint une partie en attente ou restaure une partie en cours dont le joueur est déjà membre.
 app.post("/api/parties/:code/rejoindre", requireAccount, async (req, res) => {
     try {
         const game = await joinGame(req.params.code.toUpperCase(), req.account.id);
         if (!game) return res.status(409).json({ erreur: "Cette partie n'est pas disponible." });
-        res.json({ statut: "en_cours", adversaire: game.adversaire });
+        res.json(game);
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }

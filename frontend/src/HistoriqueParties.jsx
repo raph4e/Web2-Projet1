@@ -53,7 +53,7 @@ function HistoriqueParties({ joueur }) {
                                         <th>Code</th>
                                         <th>Couleur</th>
                                         <th>Statut</th>
-                                        <th>Résultat</th>
+                                        <th>Gagnant</th>
                                     </tr>
                                 </thead>
                                 <tbody>

@@ -1,10 +1,22 @@
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { findOrCreateAccount } from '../repository/joueurs.js';
 import { createGame, findGame, joinGame, leaveGame } from '../repository/parties.js';
+import db from '../db.js';
 
 // Ces tests utilisent une base vide en mémoire, pas db.sqlite3 (voir test/setup.js).
 // Chaque test crée ses propres joueurs pour ne pas dépendre des autres tests.
+beforeEach(async () => {
+  for (const table of ['coups', 'parties', 'joueurs']) {
+    await new Promise((resolve, reject) => {
+      db.run(`DELETE FROM ${table}`, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+  }
+});
+
 let prochainId = 1;
 function nouveauJoueur() {
   const id = prochainId++;
@@ -19,7 +31,7 @@ test('createGame renvoie un code de 6 caracteres en majuscules', async () => {
   assert.match(code, /^[0-9A-F]{6}$/);
 });
 
-test.skip('createGame refuse une 2e partie pour le meme joueur', async () => {
+test('createGame refuse une 2e partie pour le meme joueur', async () => {
   const joueur = await nouveauJoueur();
   await createGame(joueur.id);
 
@@ -40,7 +52,9 @@ test('joinGame renvoie l\'adversaire et passe la partie en cours', async () => {
 
   const resultat = await joinGame(code, noir.id);
 
-  assert.deepEqual(resultat, { adversaire: blanc.login });
+  assert.equal(resultat.adversaire, blanc.login);
+  assert.equal(resultat.joueur_est_blanc, 0);
+  assert.equal(resultat.monTour, false);
   const partie = await findGame(code);
   assert.equal(partie.statut, 'en_cours');
   assert.equal(partie.joueur_noir_login, noir.login);

@@ -17,6 +17,7 @@ function App() {
     const [page, setPage] = useState("choix");
     const [codePartie, setCodePartie] = useState(null);
     const [partieId, setPartieId] = useState(null);
+    const [positionInitiale, setPositionInitiale] = useState(() => new Chess().fen());
     const [adversaire, setAdversaire] = useState(null);
     const [monTour, setMonTour] = useState(false);
     const [partieQuittee, setPartieQuittee] = useState(null);
@@ -102,6 +103,7 @@ function App() {
         const partie = await response.json();
         setCodePartie(partie.code);
         setPartieId(null);
+        setPositionInitiale(new Chess().fen());
         setAdversaire(null);
         setEloBlanc(partie.joueur_blanc_elo);
         setEloNoir(partie.joueur_noir_elo);
@@ -164,6 +166,7 @@ function App() {
         }
         setCodePartie(null);
         setPartieId(null);
+        setPositionInitiale(new Chess().fen());
         setAdversaire(null);
         setMonTour(false);
         setPartieQuittee(null);
@@ -218,6 +221,7 @@ function App() {
                         <HistoriqueParties joueur={compte} />
                     ) : page === "echiquier" ? (
                         <Echiquier
+                            positionInitiale={positionInitiale}
                             adversaire={adversaire}
                             eloBlanc={eloBlanc}
                             eloNoir={eloNoir}
@@ -227,10 +231,14 @@ function App() {
                             erreurSauvegarde={erreurSauvegarde}
                         />
                     ) : page === "joindre" ? (
-                        <JoindrePartie onRejoint={(code, nomAdversaire) => {
+                        <JoindrePartie onRejoint={(code, partie) => {
                             setCodePartie(code);
-                            setAdversaire(nomAdversaire);
-                            setMonTour(false);
+                            setPartieId(partie.id);
+                            setPositionInitiale(partie.FEN || new Chess().fen());
+                            setAdversaire(partie.adversaire);
+                            setMonTour(Boolean(partie.monTour));
+                            setEloBlanc(partie.joueur_est_blanc ? partie.elo_joueur : partie.elo_adversaire);
+                            setEloNoir(partie.joueur_est_blanc ? partie.elo_adversaire : partie.elo_joueur);
                             setPartieQuittee(null);
                             setPage("echiquier");
                         }} />
