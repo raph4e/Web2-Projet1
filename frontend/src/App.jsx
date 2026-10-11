@@ -4,6 +4,7 @@ import CreerPartiePrive from "./CreerPartiePrive";
 import JoindrePartie from "./JoindrePartie";
 import Echiquier from "./Echiquier";
 import AttentePartie from "./AttentePartie";
+import HistoriqueParties from "./HistoriqueParties";
 import { useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
 
@@ -12,7 +13,7 @@ function App() {
     // État du compte utilisateur connecté
     const [compte, setCompte] = useState(null);
 
-    // Indique la page actuelle : "choix", "attente", "joindre", "echiquier" ou "terminee"
+    // Indique la page actuelle : "choix", "attente", "joindre", "echiquier", "historique" ou "terminee"
     const [page, setPage] = useState("choix");
     const [codePartie, setCodePartie] = useState(null);
     const [partieId, setPartieId] = useState(null);
@@ -136,6 +137,15 @@ function App() {
                     const resultat = await finResponse.json();
                     throw new Error(resultat.erreur ?? "Impossible de terminer la partie.");
                 }
+
+                const compteResponse = await fetch("http://localhost:3000/api/me", {
+                    credentials: "include",
+                    cache: "no-store",
+                });
+                if (!compteResponse.ok) {
+                    throw new Error("La partie est terminée, mais le classement n’a pas pu être actualisé.");
+                }
+                setCompte(await compteResponse.json());
             }
 
             setErreurSauvegarde(null);
@@ -184,7 +194,7 @@ function App() {
                 <>
                     <header className="level p-4 mb-0" style={{ backgroundColor: "#6b4f3a" }}>
                         <div className="level-left">
-                            {(page === "echiquier" || page === "joindre" || page === "attente") && (
+                            {(page === "echiquier" || page === "joindre" || page === "attente" || page === "historique") && (
                                 <button className="button is-white" onClick={retournerAuChoix}>
                                     {page === "echiquier" ? "Quitter la partie" : "Retour"}
                                 </button>
@@ -204,6 +214,8 @@ function App() {
                     </header>
                     {page === "attente" ? (
                         <AttentePartie code={codePartie} />
+                    ) : page === "historique" ? (
+                        <HistoriqueParties joueur={compte} />
                     ) : page === "echiquier" ? (
                         <Echiquier
                             adversaire={adversaire}
@@ -229,6 +241,7 @@ function App() {
                                 setPartieQuittee(null);
                                 setPage("joindre");
                             }}
+                            onHistorique={() => setPage("historique")}
                             message={partieQuittee}
                         />
                     )}

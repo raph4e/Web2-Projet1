@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import express from 'express';
 import { findOrCreateAccount } from '../repository/joueurs.js';
+import { createGame } from '../repository/parties.js';
 import { COOKIE_NAME, signSession } from '../session.js';
 
 // Tests d'intégration : on envoie de vraies requêtes HTTP à l'application Express,
@@ -77,6 +78,25 @@ test('GET /api/parties/:code inconnu renvoie 404', async () => {
   const res = await request(app).get('/api/parties/ZZZZZZ');
 
   assert.equal(res.status, 404);
+});
+
+test('GET /api/joueurs/:id/parties renvoie les parties du joueur', async () => {
+  const joueur = await nouveauJoueur();
+  const autreJoueur = await nouveauJoueur();
+  const code = await createGame(joueur.id, 'fen-initial');
+  const autreCode = await createGame(autreJoueur.id, 'fen-initial');
+
+  const res = await request(app).get(`/api/joueurs/${joueur.id}/parties`);
+
+  assert.equal(res.status, 200);
+  assert.ok(res.body.some((partie) => partie.code === code));
+  assert.ok(res.body.every((partie) => partie.code !== autreCode));
+});
+
+test('GET /api/joueurs/:id/parties refuse un identifiant invalide', async () => {
+  const res = await request(app).get('/api/joueurs/abc/parties');
+
+  assert.equal(res.status, 400);
 });
 
 test.skip('scenario complet : creer, rejoindre, consulter, quitter', async () => {

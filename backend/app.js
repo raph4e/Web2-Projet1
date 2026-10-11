@@ -1,7 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { auth, currentAccount } from "./auth.js";
-import { findAllAccounts } from "./repository/joueurs.js";
+import { findAllAccounts, findGamesByPlayer } from "./repository/joueurs.js";
 import {
     createGame,
     findGame,
@@ -29,6 +29,20 @@ app.get("/", (req, res) => {
 app.get("/api/joueurs", async (req, res) => {
     try {
         res.json(await findAllAccounts());
+    } catch (err) {
+        res.status(500).json({ erreur: err.message });
+    }
+});
+
+// Route pour récupérer toutes les parties d'un joueur.
+app.get("/api/joueurs/:id/parties", async (req, res) => {
+    const playerId = Number(req.params.id);
+    if (!Number.isSafeInteger(playerId) || playerId <= 0) {
+        return res.status(400).json({ erreur: "Un identifiant de joueur positif est requis." });
+    }
+
+    try {
+        res.json(await findGamesByPlayer(playerId));
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }
