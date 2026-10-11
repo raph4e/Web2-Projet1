@@ -21,6 +21,8 @@ function App() {
     const [partieQuittee, setPartieQuittee] = useState(null);
     const [erreurSauvegarde, setErreurSauvegarde] = useState(null);
     const pagePrecedente = useRef("choix");
+    const [eloBlanc, setEloBlanc] = useState(null);
+    const [eloNoir, setEloNoir] = useState(null);
 
     // Vérifie si l'utilisateur est déjà connecté en récupérant les informations de son compte depuis le backend
     useEffect(() => {
@@ -55,6 +57,8 @@ function App() {
 
             if (page === "attente" && partie.statut === "en_cours") {
                 setAdversaire(partie.joueur_noir_login);
+                setEloBlanc(partie.joueur_blanc_elo);
+                setEloNoir(partie.joueur_noir_elo);
                 setMonTour(true);
                 setPage("echiquier");
             }
@@ -79,7 +83,7 @@ function App() {
             fetch(`http://localhost:3000/api/parties/${codePartie}`, {
                 method: "DELETE",
                 credentials: "include",
-            }).catch(() => {});
+            }).catch(() => { });
         }
 
         pagePrecedente.current = page;
@@ -98,6 +102,8 @@ function App() {
         setCodePartie(partie.code);
         setPartieId(null);
         setAdversaire(null);
+        setEloBlanc(partie.joueur_blanc_elo);
+        setEloNoir(partie.joueur_noir_elo);
         setPartieQuittee(null);
         setErreurSauvegarde(null);
         setPage("attente");
@@ -187,6 +193,9 @@ function App() {
                         <div className="level-right is-flex is-align-items-center">
                             <p className="has-text-white mr-4">
                                 Connecté : <strong className="ml-2 has-text-white">{compte.login}</strong>
+                                {compte.elo !== undefined && (
+                                    <span className="tag is-light has-text-dark ml-3">Elo : {compte.elo}</span>
+                                )}
                             </p>
                             <button className="button is-light" onClick={seDeconnecter}>
                                 Déconnexion
@@ -198,6 +207,8 @@ function App() {
                     ) : page === "echiquier" ? (
                         <Echiquier
                             adversaire={adversaire}
+                            eloBlanc={eloBlanc}
+                            eloNoir={eloNoir}
                             monTour={monTour}
                             partieQuittee={partieQuittee}
                             onMove={sauvegarderPosition}

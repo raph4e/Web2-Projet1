@@ -105,5 +105,6 @@ function publicProfile(account) {
     login: account.login,
     name: account.name,
     avatarUrl: account.avatar_url,
+    elo: account.elo,
   };
 }
