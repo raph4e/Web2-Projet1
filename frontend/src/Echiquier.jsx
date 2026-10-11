@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-function Echiquier({ adversaire,eloBlanc,eloNoir, monTour, partieQuittee, onMove, erreurSauvegarde }) {
+function Echiquier({ positionInitiale, adversaire, eloBlanc, eloNoir, monTour, partieQuittee, onMove, erreurSauvegarde }) {
     const [nombrePoints, setNombrePoints] = useState(1);
-    const [game, setGame] = useState(new Chess());
+    const [game, setGame] = useState(() => new Chess(positionInitiale));
+
+    useEffect(() => {
+        setGame(new Chess(positionInitiale));
+    }, [positionInitiale]);
 
     // Met à jour le nombre de points affichés pour l'animation de l'attente de l'adversaire
     useEffect(() => {

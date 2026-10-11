@@ -1,4 +1,4 @@
-function CreerPartiePrive({ onCreer, onJoindre, message }) {
+function CreerPartiePrive({ onCreer, onJoindre, onHistorique, message }) {
     return (
         <div className="hero-body">
             <div className="container is-flex is-justify-content-center">
@@ -24,6 +24,12 @@ function CreerPartiePrive({ onCreer, onJoindre, message }) {
                         onClick={onJoindre}
                     >
                         Joindre une partie
+                    </button>
+                    <button
+                        className="button is-light is-fullwidth mt-4"
+                        onClick={onHistorique}
+                    >
+                        Historique des parties
                     </button>
                     </div>
                 </div>

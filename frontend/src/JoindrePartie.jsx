@@ -12,7 +12,7 @@ function JoindrePartie({ onRejoint }) {
         // Si réussi, appelle la fonction onRejoint avec le code de la partie et le nom de l'adversaire.
         if (response.ok) {
             const partie = await response.json();
-            onRejoint(code, partie.adversaire);
+            onRejoint(code, partie);
         } else {
             const resultat = await response.json();
             alert(resultat.erreur ?? "Impossible de rejoindre cette partie.");

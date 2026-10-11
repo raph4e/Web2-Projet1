@@ -4,6 +4,7 @@ import CreerPartiePrive from "./CreerPartiePrive";
 import JoindrePartie from "./JoindrePartie";
 import Echiquier from "./Echiquier";
 import AttentePartie from "./AttentePartie";
+import HistoriqueParties from "./HistoriqueParties";
 import { useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
 
@@ -12,10 +13,11 @@ function App() {
     // État du compte utilisateur connecté
     const [compte, setCompte] = useState(null);
 
-    // Indique la page actuelle : "choix", "attente", "joindre", "echiquier" ou "terminee"
+    // Indique la page actuelle : "choix", "attente", "joindre", "echiquier", "historique" ou "terminee"
     const [page, setPage] = useState("choix");
     const [codePartie, setCodePartie] = useState(null);
     const [partieId, setPartieId] = useState(null);
+    const [positionInitiale, setPositionInitiale] = useState(() => new Chess().fen());
     const [adversaire, setAdversaire] = useState(null);
     const [monTour, setMonTour] = useState(false);
     const [partieQuittee, setPartieQuittee] = useState(null);
@@ -101,6 +103,7 @@ function App() {
         const partie = await response.json();
         setCodePartie(partie.code);
         setPartieId(null);
+        setPositionInitiale(new Chess().fen());
         setAdversaire(null);
         setEloBlanc(partie.joueur_blanc_elo);
         setEloNoir(partie.joueur_noir_elo);
@@ -136,6 +139,15 @@ function App() {
                     const resultat = await finResponse.json();
                     throw new Error(resultat.erreur ?? "Impossible de terminer la partie.");
                 }
+
+                const compteResponse = await fetch("http://localhost:3000/api/me", {
+                    credentials: "include",
+                    cache: "no-store",
+                });
+                if (!compteResponse.ok) {
+                    throw new Error("La partie est terminée, mais le classement n’a pas pu être actualisé.");
+                }
+                setCompte(await compteResponse.json());
             }
 
             setErreurSauvegarde(null);
@@ -154,6 +166,7 @@ function App() {
         }
         setCodePartie(null);
         setPartieId(null);
+        setPositionInitiale(new Chess().fen());
         setAdversaire(null);
         setMonTour(false);
         setPartieQuittee(null);
@@ -184,7 +197,7 @@ function App() {
                 <>
                     <header className="level p-4 mb-0" style={{ backgroundColor: "#6b4f3a" }}>
                         <div className="level-left">
-                            {(page === "echiquier" || page === "joindre" || page === "attente") && (
+                            {(page === "echiquier" || page === "joindre" || page === "attente" || page === "historique") && (
                                 <button className="button is-white" onClick={retournerAuChoix}>
                                     {page === "echiquier" ? "Quitter la partie" : "Retour"}
                                 </button>
@@ -204,8 +217,11 @@ function App() {
                     </header>
                     {page === "attente" ? (
                         <AttentePartie code={codePartie} />
+                    ) : page === "historique" ? (
+                        <HistoriqueParties joueur={compte} />
                     ) : page === "echiquier" ? (
                         <Echiquier
+                            positionInitiale={positionInitiale}
                             adversaire={adversaire}
                             eloBlanc={eloBlanc}
                             eloNoir={eloNoir}
@@ -215,10 +231,14 @@ function App() {
                             erreurSauvegarde={erreurSauvegarde}
                         />
                     ) : page === "joindre" ? (
-                        <JoindrePartie onRejoint={(code, nomAdversaire) => {
+                        <JoindrePartie onRejoint={(code, partie) => {
                             setCodePartie(code);
-                            setAdversaire(nomAdversaire);
-                            setMonTour(false);
+                            setPartieId(partie.id);
+                            setPositionInitiale(partie.FEN || new Chess().fen());
+                            setAdversaire(partie.adversaire);
+                            setMonTour(Boolean(partie.monTour));
+                            setEloBlanc(partie.joueur_est_blanc ? partie.elo_joueur : partie.elo_adversaire);
+                            setEloNoir(partie.joueur_est_blanc ? partie.elo_adversaire : partie.elo_joueur);
                             setPartieQuittee(null);
                             setPage("echiquier");
                         }} />
@@ -229,6 +249,7 @@ function App() {
                                 setPartieQuittee(null);
                                 setPage("joindre");
                             }}
+                            onHistorique={() => setPage("historique")}
                             message={partieQuittee}
                         />
                     )}

@@ -1,8 +1,10 @@
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import express from 'express';
+import db from '../db.js';
 import { findOrCreateAccount } from '../repository/joueurs.js';
+import { createGame } from '../repository/parties.js';
 import { COOKIE_NAME, signSession } from '../session.js';
 
 // Tests d'intégration : on envoie de vraies requêtes HTTP à l'application Express,
@@ -11,6 +13,17 @@ import { COOKIE_NAME, signSession } from '../session.js';
 // app.js n'exporte pas l'application et appelle app.listen(3000) dès qu'on l'importe.
 // Avant de l'importer, on remplace donc listen() par une version qui n'ouvre aucun port
 // et qui garde l'application dans `app`. supertest l'utilise ensuite directement.
+beforeEach(async () => {
+  for (const table of ['coups', 'parties', 'joueurs']) {
+    await new Promise((resolve, reject) => {
+      db.run(`DELETE FROM ${table}`, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+  }
+});
+
 let app;
 express.application.listen = function () {
   app = this;
@@ -62,14 +75,20 @@ test('POST /api/parties sans etre connecte renvoie 401', async () => {
   assert.equal(res.status, 401);
 });
 
-test.skip('POST /api/parties cree une partie, puis refuse la 2e (409)', async () => {
+test('POST /api/parties cree une partie, puis refuse la 2e (409)', async () => {
   const joueur = await nouveauJoueur();
 
-  const premiere = await request(app).post('/api/parties').set('Cookie', cookiePour(joueur));
+  const premiere = await request(app)
+    .post('/api/parties')
+    .set('Cookie', cookiePour(joueur))
+    .send({ FEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' });
   assert.equal(premiere.status, 201);
   assert.match(premiere.body.code, /^[0-9A-F]{6}$/);
 
-  const seconde = await request(app).post('/api/parties').set('Cookie', cookiePour(joueur));
+  const seconde = await request(app)
+    .post('/api/parties')
+    .set('Cookie', cookiePour(joueur))
+    .send({ FEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' });
   assert.equal(seconde.status, 409);
 });
 
@@ -79,12 +98,34 @@ test('GET /api/parties/:code inconnu renvoie 404', async () => {
   assert.equal(res.status, 404);
 });
 
-test.skip('scenario complet : creer, rejoindre, consulter, quitter', async () => {
+test('GET /api/joueurs/:id/parties renvoie les parties du joueur', async () => {
+  const joueur = await nouveauJoueur();
+  const autreJoueur = await nouveauJoueur();
+  const code = await createGame(joueur.id, 'fen-initial');
+  const autreCode = await createGame(autreJoueur.id, 'fen-initial');
+
+  const res = await request(app).get(`/api/joueurs/${joueur.id}/parties`);
+
+  assert.equal(res.status, 200);
+  assert.ok(res.body.some((partie) => partie.code === code));
+  assert.ok(res.body.every((partie) => partie.code !== autreCode));
+});
+
+test('GET /api/joueurs/:id/parties refuse un identifiant invalide', async () => {
+  const res = await request(app).get('/api/joueurs/abc/parties');
+
+  assert.equal(res.status, 400);
+});
+
+test('scenario complet : creer, rejoindre, consulter, quitter', async () => {
   const blanc = await nouveauJoueur();
   const noir = await nouveauJoueur();
 
   // Le joueur blanc crée la partie
-  const creation = await request(app).post('/api/parties').set('Cookie', cookiePour(blanc));
+  const creation = await request(app)
+    .post('/api/parties')
+    .set('Cookie', cookiePour(blanc))
+    .send({ FEN: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' });
   const { code } = creation.body;
 
   // Le joueur noir la rejoint (en minuscules : le serveur doit accepter)
@@ -92,7 +133,22 @@ test.skip('scenario complet : creer, rejoindre, consulter, quitter', async () =>
     .post(`/api/parties/${code.toLowerCase()}/rejoindre`)
     .set('Cookie', cookiePour(noir));
   assert.equal(rejoindre.status, 200);
-  assert.deepEqual(rejoindre.body, { statut: 'en_cours', adversaire: blanc.login });
+  assert.equal(rejoindre.body.adversaire, blanc.login);
+  assert.equal(rejoindre.body.monTour, false);
+
+  const rejoindreDeNouveau = await request(app)
+    .post(`/api/parties/${code}/rejoindre`)
+    .set('Cookie', cookiePour(noir));
+  assert.equal(rejoindreDeNouveau.status, 200);
+  assert.equal(rejoindreDeNouveau.body.FEN, 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  assert.equal(rejoindreDeNouveau.body.monTour, false);
+
+  const autreJoueur = await nouveauJoueur();
+  const autreCode = await createGame(autreJoueur.id, 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  const autreRejoindre = await request(app)
+    .post(`/api/parties/${autreCode}/rejoindre`)
+    .set('Cookie', cookiePour(noir));
+  assert.equal(autreRejoindre.status, 409);
 
   // N'importe qui peut consulter la partie
   const partie = await request(app).get(`/api/parties/${code}`);
@@ -108,7 +164,7 @@ test.skip('scenario complet : creer, rejoindre, consulter, quitter', async () =>
   assert.equal(quitterEncore.status, 404);
 });
 
-test.skip('POST /api/parties/:code/rejoindre sur une partie inexistante renvoie 409', async () => {
+test('POST /api/parties/:code/rejoindre sur une partie inexistante renvoie 409', async () => {
   const joueur = await nouveauJoueur();
 
   const res = await request(app).post('/api/parties/ZZZZZZ/rejoindre').set('Cookie', cookiePour(joueur));

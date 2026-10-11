@@ -1,8 +1,21 @@
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findAccount, findAllAccounts, findOrCreateAccount } from '../repository/joueurs.js';
+import { findAccount, findAllAccounts, findGamesByPlayer, findOrCreateAccount } from '../repository/joueurs.js';
+import { createGame, joinGame } from '../repository/parties.js';
+import db from '../db.js';
 
 // Ces tests utilisent une base vide en mémoire, pas db.sqlite3 (voir test/setup.js).
+
+beforeEach(async () => {
+  for (const table of ['coups', 'parties', 'joueurs']) {
+    await new Promise((resolve, reject) => {
+      db.run(`DELETE FROM ${table}`, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+  }
+});
 
 test('findOrCreateAccount cree un nouveau joueur avec un elo de 1000', async () => {
   const joueur = await findOrCreateAccount({ githubId: 1, login: 'alice', name: 'Alice', avatarUrl: 'a.png' });
@@ -27,6 +40,28 @@ test('findOrCreateAccount ne cree pas de doublon et met a jour le joueur', async
 
 test('findAccount renvoie undefined si le joueur n\'existe pas', async () => {
   assert.equal(await findAccount(999), undefined);
+});
+
+test('findGamesByPlayer renvoie les parties où le joueur est blanc ou noir', async () => {
+  const joueur = await findOrCreateAccount({ githubId: 5, login: 'joueur', name: null, avatarUrl: null });
+  const adversaireBlanc = await findOrCreateAccount({ githubId: 6, login: 'blanc', name: null, avatarUrl: null });
+  const adversaireNoir = await findOrCreateAccount({ githubId: 7, login: 'noir', name: null, avatarUrl: null });
+
+  const partieBlanc = await createGame(joueur.id);
+  await joinGame(partieBlanc, adversaireBlanc.id);
+  await new Promise((resolve, reject) => {
+    db.run("UPDATE parties SET statut = 'terminee' WHERE code = ?", [partieBlanc], (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+  const partieNoir = await createGame(adversaireNoir.id);
+  await joinGame(partieNoir, joueur.id);
+
+  const parties = await findGamesByPlayer(joueur.id);
+
+  assert.equal(parties.length, 2);
+  assert.deepEqual(new Set(parties.map((partie) => partie.code)), new Set([partieBlanc, partieNoir]));
 });
 
 test('deux comptes GitHub avec le meme login sont refuses (nom UNIQUE)', async () => {

@@ -21,6 +21,22 @@ export function findAccount(id) {
     });
 }
 
+// Récupère toutes les parties auxquelles un joueur a participé.
+export function findGamesByPlayer(playerId) {
+    return new Promise((resolve, reject) => {
+        db.all(
+            `SELECT * FROM parties
+             WHERE joueur_blanc_id = ? OR joueur_noir_id = ?
+             ORDER BY date_creation DESC, id DESC`,
+            [playerId, playerId],
+            (err, parties) => {
+                if (err) reject(err);
+                else resolve(parties);
+            },
+        );
+    });
+}
+
 // Récupère un joueur par son GitHub ID ou crée un nouveau joueur si aucun n'existe
 export function findOrCreateAccount({ githubId, login, name, avatarUrl }) {
     return new Promise((resolve, reject) => {

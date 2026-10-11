@@ -27,24 +27,43 @@ export function updateGameFEN(gameId, FEN, playerId) {
 // Crée une nouvelle partie pour le joueur.
 export function createGame(playerId, FEN) {
     return new Promise((resolve, reject) => {
-        const code = randomBytes(3).toString("hex").toUpperCase();
-        db.run(
-            "INSERT INTO parties (code, joueur_blanc_id) VALUES (?, ?)",
-            [code, playerId],
-            function (insertError) {
-                if (insertError) {
-                    reject(insertError);
+        db.get(
+            `SELECT id
+             FROM parties
+             WHERE statut IN ('en_attente', 'en_cours')
+               AND (joueur_blanc_id = ? OR joueur_noir_id = ?)
+             LIMIT 1`,
+            [playerId, playerId],
+            (selectError, existingGame) => {
+                if (selectError) {
+                    reject(selectError);
+                    return;
+                }
+                if (existingGame) {
+                    resolve(null);
                     return;
                 }
 
-                const gameId = this.lastID;
-                createInitialMove(gameId, FEN)
-                    .then(() => resolve(code))
-                    .catch((moveError) => {
-                        db.run("DELETE FROM parties WHERE id = ?", [gameId], (deleteError) => {
-                            reject(deleteError ?? moveError);
-                        });
-                    });
+                const code = randomBytes(3).toString("hex").toUpperCase();
+                db.run(
+                    "INSERT INTO parties (code, joueur_blanc_id) VALUES (?, ?)",
+                    [code, playerId],
+                    function (insertError) {
+                        if (insertError) {
+                            reject(insertError);
+                            return;
+                        }
+
+                        const gameId = this.lastID;
+                        createInitialMove(gameId, FEN)
+                            .then(() => resolve(code))
+                            .catch((moveError) => {
+                                db.run("DELETE FROM parties WHERE id = ?", [gameId], (deleteError) => {
+                                    reject(deleteError ?? moveError);
+                                });
+                            });
+                    },
+                );
             },
         );
     });
@@ -263,31 +282,99 @@ export function updatePlayersElo(code, playerId, scoreBlanc) {
 // Ajoute un joueur à une partie en attente.
 export function joinGame(code, playerId) {
     return new Promise((resolve, reject) => {
-        db.run(
-            `UPDATE parties
-             SET joueur_noir_id = ?, statut = 'en_cours'
-             WHERE code = ? AND statut = 'en_attente' AND joueur_blanc_id != ?`,
-            [playerId, code, playerId],
-            function (updateError) {
-                if (updateError) {
-                    reject(updateError);
+        db.get(
+            `SELECT code, statut
+             FROM parties
+             WHERE statut IN ('en_attente', 'en_cours')
+               AND (joueur_blanc_id = ? OR joueur_noir_id = ?)
+             LIMIT 1`,
+            [playerId, playerId],
+            (selectError, currentGame) => {
+                if (selectError) {
+                    reject(selectError);
                     return;
                 }
 
-                if (this.changes === 0) {
+                if (currentGame && (currentGame.code !== code || currentGame.statut !== "en_cours")) {
                     resolve(null);
                     return;
                 }
 
-                db.get(
-                    `SELECT joueurs.login AS adversaire
-                     FROM parties
-                     JOIN joueurs ON joueurs.id = parties.joueur_blanc_id
-                     WHERE parties.code = ?`,
-                    [code],
-                    (selectError, game) => {
-                        if (selectError) reject(selectError);
-                        else resolve(game);
+                const loadGame = () => {
+                    db.get(
+                        `SELECT parties.id,
+                                parties.statut,
+                                parties.joueur_blanc_id = ? AS joueur_est_blanc,
+                                coups.FEN AS FEN,
+                                CASE
+                                    WHEN parties.joueur_blanc_id = ? THEN noir.login
+                                    ELSE blanc.login
+                                END AS adversaire,
+                                CASE
+                                    WHEN parties.joueur_blanc_id = ? THEN blanc.elo
+                                    ELSE noir.elo
+                                END AS elo_joueur,
+                                CASE
+                                    WHEN parties.joueur_blanc_id = ? THEN noir.elo
+                                    ELSE blanc.elo
+                                END AS elo_adversaire
+                         FROM parties
+                         LEFT JOIN joueurs AS blanc ON blanc.id = parties.joueur_blanc_id
+                         LEFT JOIN joueurs AS noir ON noir.id = parties.joueur_noir_id
+                         LEFT JOIN coups ON coups.partie_id = parties.id
+                         WHERE parties.code = ?
+                           AND parties.statut = 'en_cours'
+                           AND (parties.joueur_blanc_id = ? OR parties.joueur_noir_id = ?)`,
+                        [playerId, playerId, playerId, playerId, code, playerId, playerId],
+                        (gameError, game) => {
+                            if (gameError) {
+                                reject(gameError);
+                                return;
+                            }
+                            if (!game) {
+                                resolve(null);
+                                return;
+                            }
+
+                            const fenTurn = game.FEN?.split(" ")[1] ?? "w";
+                            const whitesTurn = fenTurn === "w";
+                            resolve({
+                                ...game,
+                                monTour: game.joueur_est_blanc ? whitesTurn : !whitesTurn,
+                            });
+                        },
+                    );
+                };
+
+                if (currentGame) {
+                    loadGame();
+                    return;
+                }
+
+                db.run(
+                    `UPDATE parties
+                     SET joueur_noir_id = ?, statut = 'en_cours'
+                     WHERE code = ?
+                       AND statut = 'en_attente'
+                       AND joueur_blanc_id != ?
+                       AND joueur_noir_id IS NULL
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM parties AS active
+                           WHERE active.statut IN ('en_attente', 'en_cours')
+                             AND (active.joueur_blanc_id = ? OR active.joueur_noir_id = ?)
+                       )`,
+                    [playerId, code, playerId, playerId, playerId],
+                    function (updateError) {
+                        if (updateError) {
+                            reject(updateError);
+                            return;
+                        }
+                        if (this.changes === 0) {
+                            resolve(null);
+                            return;
+                        }
+                        loadGame();
                     },
                 );
             },
