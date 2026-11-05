@@ -1,4 +1,21 @@
 services:
+  # Base de données PostgreSQL. Le mot de passe vient du .env posé à côté (jamais dans le dépôt).
+  # Pas de "ports:" ici : seule l'application a besoin d'y accéder, pas Internet.
+  db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=echec
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=echec
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U echec -d echec"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    restart: always
+
   backend:
     image: ghcr.io/${REGISTRY_OWNER}/backend:${IMAGE_TAG}
     ports:
@@ -8,6 +25,10 @@ services:
       - SESSION_SECRET=${SESSION_SECRET}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - DATABASE_URL=postgres://echec:${POSTGRES_PASSWORD}@db:5432/echec
+    depends_on:
+      db:
+        condition: service_healthy
     restart: always
 
   frontend:
@@ -17,3 +38,6 @@ services:
     depends_on:
       - backend
     restart: always
+
+volumes:
+  pgdata:

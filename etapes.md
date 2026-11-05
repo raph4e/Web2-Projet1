@@ -81,7 +81,7 @@ Cette table enregistrera les coups joues dans chaque partie.
 backend/
 ├── app.js                  # Serveur Express et routes API
 ├── auth.js                 # Authentification GitHub
-├── db.js                   # Connexion et tables SQLite
+├── db.js                   # Connexion et tables PostgreSQL
 ├── session.js              # Gestion des sessions
 └── repository/
     ├── joueurs.js          # Requetes liees aux joueurs

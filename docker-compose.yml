@@ -1,8 +1,28 @@
 services:
+  # Base de données PostgreSQL. Les données sont gardées dans le volume "pgdata",
+  # donc elles survivent à un "docker compose down" (mais pas à "down -v").
+  db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=echec
+      - POSTGRES_PASSWORD=echec
+      - POSTGRES_DB=echec
+    ports:
+      # 5433 sur ton ordi (un autre PostgreSQL utilise déjà le 5432 chez toi), 5432 dans Docker
+      - "5433:5432"  # pour s'y connecter depuis l'ordi (DBeaver, pgAdmin, etc.)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Permet au backend d'attendre que PostgreSQL soit vraiment prêt avant de démarrer
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U echec -d echec"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
   backend:
     build: ./backend
     ports:
-      - "3000:3000"  
+      - "3000:3000"
     env_file:
       - .env
     volumes:
@@ -10,6 +30,11 @@ services:
       - backend_node_modules:/app/node_modules
     environment:
       - PORT=3000
+      # "db" est le nom du service ci-dessus : Docker le résout en adresse réseau
+      - DATABASE_URL=postgres://echec:echec@db:5432/echec
+    depends_on:
+      db:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
@@ -22,5 +47,6 @@ services:
       - backend
 
 volumes:
+  pgdata:
   backend_node_modules:
   frontend_node_modules:
