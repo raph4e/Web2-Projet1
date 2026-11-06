@@ -4,16 +4,12 @@ import { findAccount, findAllAccounts, findGamesByPlayer, findOrCreateAccount } 
 import { createGame, joinGame } from '../repository/parties.js';
 import db from '../db.js';
 
-// Ces tests utilisent une base vide en mémoire, pas db.sqlite3 (voir test/setup.js).
+// Ces tests utilisent une base vide en mémoire, pas le vrai PostgreSQL (voir test/setup.js).
 
 beforeEach(async () => {
+  // db.query() retourne une promesse : plus besoin de l'envelopper dans new Promise
   for (const table of ['coups', 'parties', 'joueurs']) {
-    await new Promise((resolve, reject) => {
-      db.run(`DELETE FROM ${table}`, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    });
+    await db.query(`DELETE FROM ${table}`);
   }
 });
 
@@ -49,12 +45,7 @@ test('findGamesByPlayer renvoie les parties où le joueur est blanc ou noir', as
 
   const partieBlanc = await createGame(joueur.id);
   await joinGame(partieBlanc, adversaireBlanc.id);
-  await new Promise((resolve, reject) => {
-    db.run("UPDATE parties SET statut = 'terminee' WHERE code = ?", [partieBlanc], (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
+  await db.query("UPDATE parties SET statut = 'terminee' WHERE code = $1", [partieBlanc]);
   const partieNoir = await createGame(adversaireNoir.id);
   await joinGame(partieNoir, joueur.id);
 

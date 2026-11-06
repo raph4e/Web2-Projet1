@@ -1,18 +1,10 @@
-// Chargé avant chaque fichier de test (voir le script "test" du package.json).
-// db.js ouvre toujours le fichier db.sqlite3. Pour ne jamais modifier la vraie base,
-// on remplace sqlite3 par une version qui ouvre une base vide en mémoire à la place.
-import { mock } from 'node:test';
-import sqlite3 from 'sqlite3';
+// Chargé avant chaque fichier de test grâce à l'option --import du script "test" (package.json).
+// db.js se connecte normalement à un vrai serveur PostgreSQL. Pour que les tests n'aient
+// besoin d'aucun serveur et ne touchent jamais la vraie base, on remplace pg.Pool par
+// celui de pg-mem : une copie de PostgreSQL qui vit entièrement en mémoire.
+// Ça doit être fait AVANT que db.js soit importé, d'où le --import.
+import pg from 'pg';
+import { newDb } from 'pg-mem';
 
-class BaseEnMemoire extends sqlite3.Database {
-  constructor() {
-    super(':memory:');
-  }
-}
-
-mock.module('sqlite3', {
-  defaultExport: { ...sqlite3, Database: BaseEnMemoire },
-});
-
-//test
-//test2/
+const { Pool } = newDb().adapters.createPg();
+pg.Pool = Pool;

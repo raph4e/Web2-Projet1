@@ -1,8 +1,9 @@
-# Utilisation de Node.js Debian (plus stable pour la compilation native de sqlite3)
-FROM node:20-slim
+# Node 24 = version LTS actuelle (Node 20 n'a plus de mises à jour de sécurité depuis avril 2026).
+# Alpine suffit maintenant : plus rien à compiler depuis qu'on n'utilise plus sqlite3.
+FROM node:24-alpine
 
-# Installation des outils de compilation nécessaires pour sqlite3
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+# Plus besoin de python3 / make / g++ : le module pg (PostgreSQL) est du pur JavaScript,
+# contrairement à sqlite3 qui devait être compilé.
 
 # Dossier de travail
 WORKDIR /app
@@ -10,8 +11,8 @@ WORKDIR /app
 # Copie des fichiers de dépendances
 COPY package*.json ./
 
-# Installation des dépendances et compilation de sqlite3 pour cette image Linux
-RUN npm install --build-from-source
+# Installation des dépendances (sans les devDependencies comme pg-mem et supertest)
+RUN npm ci --omit=dev
 
 # Copie du reste du code source
 COPY . .
