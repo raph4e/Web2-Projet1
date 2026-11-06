@@ -4,16 +4,12 @@ import { findOrCreateAccount } from '../repository/joueurs.js';
 import { createGame, findGame, joinGame, leaveGame } from '../repository/parties.js';
 import db from '../db.js';
 
-// Ces tests utilisent une base vide en mémoire, pas db.sqlite3 (voir test/setup.js).
+// Ces tests utilisent une base vide en mémoire, pas le vrai PostgreSQL (voir test/setup.js).
 // Chaque test crée ses propres joueurs pour ne pas dépendre des autres tests.
 beforeEach(async () => {
+  // db.query() retourne une promesse : plus besoin de l'envelopper dans new Promise
   for (const table of ['coups', 'parties', 'joueurs']) {
-    await new Promise((resolve, reject) => {
-      db.run(`DELETE FROM ${table}`, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    });
+    await db.query(`DELETE FROM ${table}`);
   }
 });
 

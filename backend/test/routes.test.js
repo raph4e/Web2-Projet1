@@ -14,13 +14,9 @@ import { COOKIE_NAME, signSession } from '../session.js';
 // Avant de l'importer, on remplace donc listen() par une version qui n'ouvre aucun port
 // et qui garde l'application dans `app`. supertest l'utilise ensuite directement.
 beforeEach(async () => {
+  // db.query() retourne une promesse : plus besoin de l'envelopper dans new Promise
   for (const table of ['coups', 'parties', 'joueurs']) {
-    await new Promise((resolve, reject) => {
-      db.run(`DELETE FROM ${table}`, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    });
+    await db.query(`DELETE FROM ${table}`);
   }
 });
 

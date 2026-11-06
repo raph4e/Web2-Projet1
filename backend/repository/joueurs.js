@@ -1,79 +1,57 @@
 import db from "../db.js";
 
+// Avec PostgreSQL (module pg), db.query() retourne une promesse : plus besoin de callbacks.
+// Le résultat contient .rows (les lignes) et .rowCount (le nombre de lignes touchées).
+// Les paramètres s'écrivent $1, $2, ... au lieu de ?.
+
 // Récupère tous les joueurs.
-export function findAllAccounts() {
-    return new Promise((resolve, reject) => {
-        db.all("SELECT * FROM joueurs", (err, joueurs) => {
-            if (err) reject(err);
-            else resolve(joueurs);
-        });
-    });
+export async function findAllAccounts() {
+    const { rows } = await db.query("SELECT * FROM joueurs");
+    return rows;
 }
 
-// Récupère un joueur par son ID
-export function findAccount(id) {
-    return new Promise((resolve, reject) => {
-        // Requête SQL pour récupérer un joueur par son ID
-        db.get("SELECT * FROM joueurs WHERE id = ?", [id], (err, joueur) => {
-            if (err) reject(err);
-            else resolve(joueur);
-        });
-    });
+// Récupère un joueur par son ID. Retourne undefined s'il n'existe pas.
+export async function findAccount(id) {
+    const { rows } = await db.query("SELECT * FROM joueurs WHERE id = $1", [id]);
+    return rows[0];
 }
 
 // Récupère toutes les parties auxquelles un joueur a participé.
-export function findGamesByPlayer(playerId) {
-    return new Promise((resolve, reject) => {
-        db.all(
-            `SELECT * FROM parties
-             WHERE joueur_blanc_id = ? OR joueur_noir_id = ?
-             ORDER BY date_creation DESC, id DESC`,
-            [playerId, playerId],
-            (err, parties) => {
-                if (err) reject(err);
-                else resolve(parties);
-            },
-        );
-    });
+// $1 est réutilisé deux fois : pas besoin de passer playerId deux fois dans le tableau.
+export async function findGamesByPlayer(playerId) {
+    const { rows } = await db.query(
+        `SELECT * FROM parties
+         WHERE joueur_blanc_id = $1 OR joueur_noir_id = $1
+         ORDER BY date_creation DESC, id DESC`,
+        [playerId],
+    );
+    return rows;
 }
 
-// Récupère un joueur par son GitHub ID ou crée un nouveau joueur si aucun n'existe
-export function findOrCreateAccount({ githubId, login, name, avatarUrl }) {
-    return new Promise((resolve, reject) => {
-        // Recherche d'un joueur existant par son GitHub ID
-        db.get("SELECT * FROM joueurs WHERE githubId = ?", [githubId], (selectError, joueur) => {
-            // En cas d'erreur lors de la sélection, on rejette la promesse
-            if (selectError) {
-                reject(selectError);
-                return;
-            }
-            
-            // Si le joueur existe déjà, on met à jour ses informations et on retourne le joueur existant
-            if (joueur) {
-                db.run(
-                    "UPDATE joueurs SET nom = ?, login = ?, name = ?, avatarUrl = ? WHERE githubId = ?",
-                    [login, login, name, avatarUrl, githubId],
-                    // En cas d'erreur lors de la mise à jour, on rejette la promesse, sinon on résout avec le joueur mis à jour
-                    (updateError) => {
-                        if (updateError) reject(updateError);
-                        else resolve({ ...joueur, nom: login, login, name, avatarUrl });
-                    },
-                );
-                return;
-            }
-            
-            // Si le joueur n'existe pas, on l'insère dans la base de données et on retourne le nouveau joueur
-            db.run(
-                "INSERT INTO joueurs (nom, githubId, login, name, avatarUrl) VALUES (?, ?, ?, ?, ?)",
-                [login, githubId, login, name, avatarUrl],
-                function (insertError) {
-                // En cas d'erreur lors de l'insertion, on rejette la promesse, sinon on résout avec le nouveau joueur créé
-                if (insertError) reject(insertError);
-                else resolve({ id: this.lastID, nom: login, githubId, login, name, avatarUrl, elo: 1000 });
-                },
-            );
-        });
-    });
+// Récupère un joueur par son GitHub ID ou crée un nouveau joueur si aucun n'existe.
+export async function findOrCreateAccount({ githubId, login, name, avatarUrl }) {
+    // Recherche d'un joueur existant par son GitHub ID ("githubId" entre guillemets, voir db.js)
+    const { rows } = await db.query(`SELECT * FROM joueurs WHERE "githubId" = $1`, [githubId]);
+    const joueur = rows[0];
+
+    // Si le joueur existe déjà, on met à jour ses informations et on retourne le joueur existant
+    if (joueur) {
+        await db.query(
+            `UPDATE joueurs SET nom = $1, login = $1, name = $2, "avatarUrl" = $3 WHERE "githubId" = $4`,
+            [login, name, avatarUrl, githubId],
+        );
+        return { ...joueur, nom: login, login, name, avatarUrl };
+    }
+
+    // Sinon on l'insère. RETURNING * remplace this.lastID de SQLite : PostgreSQL renvoie
+    // directement la ligne créée (avec son id et son elo par défaut).
+    const insertion = await db.query(
+        `INSERT INTO joueurs (nom, "githubId", login, name, "avatarUrl")
+         VALUES ($1, $2, $1, $3, $4)
+         RETURNING *`,
+        [login, githubId, name, avatarUrl],
+    );
+    return insertion.rows[0];
 }
 
 // Crée un nouveau joueur à partir du profil GitHub
