@@ -3,6 +3,8 @@
 // besoin d'aucun serveur et ne touchent jamais la vraie base, on remplace pg.Pool par
 // celui de pg-mem : une copie de PostgreSQL qui vit entièrement en mémoire.
 // Ça doit être fait AVANT que db.js soit importé, d'où le --import.
+process.env.NODE_ENV = 'test'; // défini ici plutôt que dans package.json pour fonctionner aussi sous Windows
+
 import pg from 'pg';
 import { newDb } from 'pg-mem';
 

@@ -1,7 +1,6 @@
 import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import express from 'express';
 import db from '../db.js';
 import { findOrCreateAccount } from '../repository/joueurs.js';
 import { createGame } from '../repository/parties.js';
@@ -9,10 +8,7 @@ import { COOKIE_NAME, signSession } from '../session.js';
 
 // Tests d'intégration : on envoie de vraies requêtes HTTP à l'application Express,
 // avec la base en mémoire (voir test/setup.js).
-//
-// app.js n'exporte pas l'application et appelle app.listen(3000) dès qu'on l'importe.
-// Avant de l'importer, on remplace donc listen() par une version qui n'ouvre aucun port
-// et qui garde l'application dans `app`. supertest l'utilise ensuite directement.
+// app.js exporte l'application et n'ouvre aucun port quand NODE_ENV vaut "test".
 beforeEach(async () => {
   // db.query() retourne une promesse : plus besoin de l'envelopper dans new Promise
   for (const table of ['coups', 'parties', 'joueurs']) {
@@ -20,11 +16,7 @@ beforeEach(async () => {
   }
 });
 
-let app;
-express.application.listen = function () {
-  app = this;
-};
-await import('../app.js');
+import { app } from '../app.js';
 
 let prochainId = 1;
 function nouveauJoueur() {
