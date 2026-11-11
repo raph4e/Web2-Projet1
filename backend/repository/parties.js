@@ -66,13 +66,12 @@ export async function findGame(code) {
     FROM parties
     LEFT JOIN joueurs AS blanc ON blanc.id = parties.joueur_blanc_id
     LEFT JOIN joueurs AS noir ON noir.id = parties.joueur_noir_id
-    LEFT JOIN coups AS dernier_coup
-      ON dernier_coup.partie_id = parties.id
-     AND dernier_coup.id = (
-       SELECT MAX(c2.id)
-       FROM coups c2
-       WHERE c2.partie_id = parties.id
-     )
+    LEFT JOIN (
+      SELECT partie_id, MAX(id) AS max_id
+      FROM coups
+      GROUP BY partie_id
+    ) AS dc ON dc.partie_id = parties.id
+    LEFT JOIN coups AS dernier_coup ON dernier_coup.id = dc.max_id
     WHERE parties.code = $1
   `, [code]);
   return rows[0];
