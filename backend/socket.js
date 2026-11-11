@@ -3,6 +3,14 @@ import { findGame, updateGameFEN } from "./repository/parties.js";
 import { Chess } from "chess.js";
 
 export function initSocket(server) {
+    if (!server) {
+        return {
+            on: () => {},
+            to: () => ({ emit: () => {} }),
+            emit: () => {},
+        };
+    }
+
     const io = new Server(server, {
         cors: {
             origin: "http://localhost:5173",

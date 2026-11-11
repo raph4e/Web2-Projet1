@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node app.js",
-    "test": "node --import ./test/setup.js --test --test-concurrency=1 test/*.test.js"
+    "test": "NODE_ENV=test node --import ./test/setup.js --test --test-concurrency=1 test/*.test.js"
   },
   "keywords": [],
   "author": "",

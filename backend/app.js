@@ -14,11 +14,16 @@ import {
 import { requireAccount } from "./authorization.js";
 import { initSocket } from "./socket.js";
 
-const app = express();
+export const app = express();
 const PORT = 3000;
-const server = http.createServer(app);
-
+export const server = http.createServer(app);
 const io = initSocket(server);
+
+if (process.env.NODE_ENV !== "test") {
+    server.listen(PORT, () => {
+        console.log(`Serveur démarré sur http://localhost:${PORT}`);
+    });
+}
 
 // Déclaration des middlewares pour gérer les requêtes CORS et le parsing du JSON
 app.use(cors({ origin: "http://localhost:5173", credentials: true }));
@@ -171,13 +176,9 @@ app.post("/api/parties/:code/rejoindre", requireAccount, async (req, res) => {
             joueur_noir_login: game.joueur_noir_login,
         });
 
-        res.json(game);
+        res.json(joined);
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }
 });
 
-// Démarrage du serveur
-server.listen(PORT, () => {
-    console.log(`Serveur démarré sur http://localhost:${PORT}`);
-});

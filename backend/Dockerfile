@@ -11,8 +11,8 @@ WORKDIR /app
 # Copie des fichiers de dépendances
 COPY package*.json ./
 
-# Installation des dépendances (sans les devDependencies comme pg-mem et supertest)
-RUN npm ci --omit=dev
+# Installation des dépendances, y compris les outils de test (pg-mem, supertest)
+RUN npm ci
 
 # Copie du reste du code source
 COPY . .
