@@ -1,3 +1,4 @@
+import http from "http";
 import cors from "cors";
 import express from "express";
 import { auth, currentAccount } from "./auth.js";
@@ -11,9 +12,13 @@ import {
     updatePlayersElo,
 } from "./repository/parties.js";
 import { requireAccount } from "./authorization.js";
+import { initSocket } from "./socket.js";
 
 const app = express();
 const PORT = 3000;
+const server = http.createServer(app);
+
+const io = initSocket(server);
 
 // Déclaration des middlewares pour gérer les requêtes CORS et le parsing du JSON
 app.use(cors({ origin: "http://localhost:5173", credentials: true }));
@@ -24,6 +29,7 @@ app.use(auth);
 app.get("/", (req, res) => {
     res.json({ message: "Serveur du jeu d'échecs fonctionnel" });
 });
+
 
 // Route pour récupérer tout les joueurs
 app.get("/api/joueurs", async (req, res) => {
@@ -124,9 +130,16 @@ app.get("/api/parties/:code", async (req, res) => {
 // Route pour supprimer une partie si le joueur est connecté et appartient à la partie. Retourne une erreur si la partie n'existe pas ou si le joueur n'appartient pas à la partie.
 app.delete("/api/parties/:code", requireAccount, async (req, res) => {
     try {
+        const code = req.params.code.toUpperCase();
 
-        const left = await leaveGame(req.params.code.toUpperCase(), req.account.id);
+        const left = await leaveGame(code, req.account.id);
         if (!left) return res.status(404).json({ erreur: "Partie introuvable." });
+
+        io.to(code).emit("partie:quitte", {
+            code,
+            message: `${req.account.login} a quitté la partie`,
+        });
+
         res.status(204).end();
     } catch (err) {
         res.status(500).json({ erreur: err.message });
@@ -136,8 +149,28 @@ app.delete("/api/parties/:code", requireAccount, async (req, res) => {
 // Rejoint une partie en attente ou restaure une partie en cours dont le joueur est déjà membre.
 app.post("/api/parties/:code/rejoindre", requireAccount, async (req, res) => {
     try {
-        const game = await joinGame(req.params.code.toUpperCase(), req.account.id);
-        if (!game) return res.status(409).json({ erreur: "Cette partie n'est pas disponible." });
+        const code = req.params.code.toUpperCase();
+        const joined = await joinGame(code, req.account.id);
+        if (!joined) {
+            return res.status(409).json({ erreur: "Cette partie n'est pas disponible." });
+        }
+
+        const game = await findGame(code);
+        if (!game) {
+            return res.status(404).json({ erreur: "Partie introuvable." });
+        }
+
+        io.to(code).emit("partie:etat", {
+            id: game.id,
+            code: game.code,
+            statut: game.statut,
+            FEN: game.FEN ?? "start",
+            joueur_blanc_id: game.joueur_blanc_id,
+            joueur_noir_id: game.joueur_noir_id,
+            joueur_blanc_login: game.joueur_blanc_login,
+            joueur_noir_login: game.joueur_noir_login,
+        });
+
         res.json(game);
     } catch (err) {
         res.status(500).json({ erreur: err.message });
@@ -145,6 +178,6 @@ app.post("/api/parties/:code/rejoindre", requireAccount, async (req, res) => {
 });
 
 // Démarrage du serveur
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Serveur démarré sur http://localhost:${PORT}`);
 });

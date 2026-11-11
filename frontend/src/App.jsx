@@ -6,7 +6,10 @@ import Echiquier from "./Echiquier";
 import AttentePartie from "./AttentePartie";
 import HistoriqueParties from "./HistoriqueParties";
 import { useEffect, useRef, useState } from "react";
+import { io } from "socket.io-client";
 import { Chess } from "chess.js";
+
+const socket = io("http://localhost:3000", { withCredentials: true });
 
 function App() {
 
@@ -17,12 +20,11 @@ function App() {
     const [page, setPage] = useState("choix");
     const [codePartie, setCodePartie] = useState(null);
     const [partieId, setPartieId] = useState(null);
+    const [partie, setPartie] = useState(null);
     const [positionInitiale, setPositionInitiale] = useState(() => new Chess().fen());
     const [adversaire, setAdversaire] = useState(null);
-    const [monTour, setMonTour] = useState(false);
     const [partieQuittee, setPartieQuittee] = useState(null);
     const [erreurSauvegarde, setErreurSauvegarde] = useState(null);
-    const pagePrecedente = useRef("choix");
     const [eloBlanc, setEloBlanc] = useState(null);
     const [eloNoir, setEloNoir] = useState(null);
 
@@ -36,41 +38,6 @@ function App() {
             .catch(() => setCompte(null));
     }, []);
 
-    // Vérifie à chaque fois que la page est "attente" et qu'un code de partie est défini si la partie a commencé, auquel cas on passe à la page de l'échiquier
-    useEffect(() => {
-        if ((page !== "attente" && page !== "echiquier") || !codePartie) return undefined;
-
-        const verifierPartie = async () => {
-            const response = await fetch(`http://localhost:3000/api/parties/${codePartie}`, {
-                cache: "no-store",
-            });
-            if (!response.ok) return;
-            const partie = await response.json();
-            setPartieId(partie.id);
-            if (partie.statut === "quitte") {
-                setPartieQuittee(`${partie.resultat} a quitté la partie`);
-                setCodePartie(null);
-                setPartieId(null);
-                setAdversaire(null);
-                setMonTour(false);
-                setPage("choix");
-                return;
-            }
-
-            if (page === "attente" && partie.statut === "en_cours") {
-                setAdversaire(partie.joueur_noir_login);
-                setEloBlanc(partie.joueur_blanc_elo);
-                setEloNoir(partie.joueur_noir_elo);
-                setMonTour(true);
-                setPage("echiquier");
-            }
-        };
-
-        verifierPartie();
-        const intervalle = setInterval(verifierPartie, 500);
-        return () => clearInterval(intervalle);
-    }, [page, codePartie]);
-
     // Efface le message après quelques secondes sans quitter la box de choix.
     useEffect(() => {
         if (!partieQuittee || page !== "choix") return undefined;
@@ -79,37 +46,53 @@ function App() {
         return () => clearTimeout(timer);
     }, [partieQuittee, page]);
 
-    // Supprime la partie si l'utilisateur quitte l'échiquier par un autre changement de page.
-    useEffect(() => {
-        if (pagePrecedente.current === "echiquier" && page !== "echiquier" && codePartie) {
-            fetch(`http://localhost:3000/api/parties/${codePartie}`, {
-                method: "DELETE",
-                credentials: "include",
-            }).catch(() => { });
-        }
-
-        pagePrecedente.current = page;
-    }, [page, codePartie]);
-
     // Crée une partie privée en appelant l'API du backend et met à jour l'état de l'application avec le code de la partie créée.
     const creerPartie = async () => {
-        const response = await fetch("http://localhost:3000/api/parties", {
-            method: "POST",
-            credentials: "include",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ FEN: new Chess().fen() }),
-        });
-        if (!response.ok) return;
-        const partie = await response.json();
-        setCodePartie(partie.code);
-        setPartieId(null);
-        setPositionInitiale(new Chess().fen());
-        setAdversaire(null);
-        setEloBlanc(partie.joueur_blanc_elo);
-        setEloNoir(partie.joueur_noir_elo);
-        setPartieQuittee(null);
-        setErreurSauvegarde(null);
-        setPage("attente");
+        try {
+            await quitterPartie();
+
+            const response = await fetch("http://localhost:3000/api/parties", {
+                method: "POST",
+                credentials: "include",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ FEN: new Chess().fen() }),
+            });
+
+            if (!response.ok) {
+                const erreur = await response.json();
+                console.error(erreur);
+                return;
+            }
+
+            const partie = await response.json();
+            setCodePartie(partie.code);
+            setPage("attente");
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const quitterPartie = async () => {
+        if (!codePartie) return;
+
+        try {
+            const response = await fetch(`http://localhost:3000/api/parties/${codePartie}`, {
+                method: "DELETE",
+                credentials: "include",
+            });
+
+            if (!response.ok && response.status !== 404) {
+                throw new Error("Impossible de quitter la partie.");
+            }
+        } finally {
+            setCodePartie(null);
+            setPartieId(null);
+            setPartie(null);
+            setPositionInitiale(new Chess().fen());
+            setAdversaire(null);
+            setPartieQuittee(null);
+            setErreurSauvegarde(null);
+        }
     };
 
     const sauvegarderPosition = async (FEN, scoreBlanc) => {
@@ -166,9 +149,9 @@ function App() {
         }
         setCodePartie(null);
         setPartieId(null);
+        setPartie(null);
         setPositionInitiale(new Chess().fen());
         setAdversaire(null);
-        setMonTour(false);
         setPartieQuittee(null);
         setErreurSauvegarde(null);
         setPage("choix");
@@ -183,12 +166,72 @@ function App() {
         setCompte(null);
         setCodePartie(null);
         setPartieId(null);
+        setPartie(null);
         setAdversaire(null);
-        setMonTour(false);
         setPartieQuittee(null);
         setErreurSauvegarde(null);
         setPage("choix");
     };
+
+    useEffect(() => {
+        if (!codePartie || !compte?.id) return undefined;
+
+        socket.emit("partie:rejoindre", {
+            code: codePartie,
+            joueurId: compte.id,
+        });
+
+        const handlePartieEtat = (partie) => {
+            if (partie.statut !== "en_cours") return;
+
+            const partieNormalisee = {
+                ...partie,
+                joueur_blanc_id: partie.joueur_blanc_id ?? partie.joueurBlancId,
+                joueur_noir_id: partie.joueur_noir_id ?? partie.joueurNoirId,
+                joueur_blanc_login: partie.joueur_blanc_login ?? partie.joueurBlancLogin,
+                joueur_noir_login: partie.joueur_noir_login ?? partie.joueurNoirLogin,
+            };
+
+            const moi = Number(compte.id);
+            const jeSuisBlanc = Number(partieNormalisee.joueur_blanc_id) === moi;
+
+            setPartie(partieNormalisee);
+            setPartieId(partieNormalisee.id);
+            setPositionInitiale(partieNormalisee.FEN || new Chess().fen());
+            setAdversaire(
+                jeSuisBlanc ? partieNormalisee.joueur_noir_login : partieNormalisee.joueur_blanc_login,
+            );
+            setPage("echiquier");
+        };
+
+        socket.on("partie:etat", handlePartieEtat);
+
+        return () => {
+            socket.off("partie:etat", handlePartieEtat);
+        };
+    }, [codePartie, compte?.id]);
+
+    useEffect(() => {
+        if (!compte?.id) return undefined;
+
+        const handlePartieQuittee = ({ code, message }) => {
+            if (!codePartie || code !== codePartie) return;
+
+            setPartieQuittee(message);
+            setCodePartie(null);
+            setPartieId(null);
+            setPartie(null);
+            setAdversaire(null);
+            setPositionInitiale(new Chess().fen());
+            setPage("choix");
+        };
+
+        socket.on("partie:quitte", handlePartieQuittee);
+
+        return () => {
+            socket.off("partie:quitte", handlePartieQuittee);
+        };
+    }, [compte?.id, codePartie]);
 
     return (
         <section className="hero is-fullheight" style={{ backgroundColor: "#6b4f3a" }}>
@@ -221,11 +264,14 @@ function App() {
                         <HistoriqueParties joueur={compte} />
                     ) : page === "echiquier" ? (
                         <Echiquier
+                            socket={socket}
                             positionInitiale={positionInitiale}
                             adversaire={adversaire}
                             eloBlanc={eloBlanc}
                             eloNoir={eloNoir}
-                            monTour={monTour}
+                            partieCode={codePartie}
+                            monJoueurId={compte?.id}
+                            joueurBlancId={partie?.joueur_blanc_id}
                             partieQuittee={partieQuittee}
                             onMove={sauvegarderPosition}
                             erreurSauvegarde={erreurSauvegarde}
@@ -236,7 +282,6 @@ function App() {
                             setPartieId(partie.id);
                             setPositionInitiale(partie.FEN || new Chess().fen());
                             setAdversaire(partie.adversaire);
-                            setMonTour(Boolean(partie.monTour));
                             setEloBlanc(partie.joueur_est_blanc ? partie.elo_joueur : partie.elo_adversaire);
                             setEloNoir(partie.joueur_est_blanc ? partie.elo_adversaire : partie.elo_joueur);
                             setPartieQuittee(null);

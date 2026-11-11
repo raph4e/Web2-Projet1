@@ -1,4 +1,4 @@
-    import db from "../db.js";
+import db from "../db.js";
 import { randomBytes } from "node:crypto";
 import { createInitialMove, calculeElo, withTransaction } from "./outils.js";
 
@@ -50,19 +50,32 @@ export async function createGame(playerId, FEN) {
 
 // Récupère une partie et les noms de ses joueurs. Retourne undefined si le code n'existe pas.
 export async function findGame(code) {
-    const { rows } = await db.query(
-        `SELECT parties.id, parties.code, parties.statut, parties.resultat,
-                blanc.login AS joueur_blanc_login,
-                blanc.elo AS joueur_blanc_elo,
-                noir.login AS joueur_noir_login,
-                noir.elo AS joueur_noir_elo
-         FROM parties
-         LEFT JOIN joueurs AS blanc ON blanc.id = parties.joueur_blanc_id
-         LEFT JOIN joueurs AS noir ON noir.id = parties.joueur_noir_id
-         WHERE parties.code = $1`,
-        [code],
-    );
-    return rows[0];
+  const { rows } = await db.query(`
+    SELECT
+      parties.id,
+      parties.code,
+      parties.statut,
+      parties.resultat,
+      parties.joueur_blanc_id,
+      parties.joueur_noir_id,
+      blanc.login AS joueur_blanc_login,
+      blanc.elo AS joueur_blanc_elo,
+      noir.login AS joueur_noir_login,
+      noir.elo AS joueur_noir_elo,
+      dernier_coup."FEN" AS "FEN"
+    FROM parties
+    LEFT JOIN joueurs AS blanc ON blanc.id = parties.joueur_blanc_id
+    LEFT JOIN joueurs AS noir ON noir.id = parties.joueur_noir_id
+    LEFT JOIN coups AS dernier_coup
+      ON dernier_coup.partie_id = parties.id
+     AND dernier_coup.id = (
+       SELECT MAX(c2.id)
+       FROM coups c2
+       WHERE c2.partie_id = parties.id
+     )
+    WHERE parties.code = $1
+  `, [code]);
+  return rows[0];
 }
 
 // Marque la partie comme quittée et enregistre le nom du joueur sortant.
