@@ -1,6 +1,38 @@
 import { Server } from "socket.io";
 import { findGame, updateGameFEN } from "./repository/parties.js";
 import { Chess } from "chess.js";
+import { verifyPlayerToken } from "./session.js";
+
+/* Calcule l'etat de la partie + presense en ligne des joueurs  */
+
+async function getGameState(code) {
+    const game = await findGame(code.toUpperCase());
+    if (!game) {
+        return null;
+    }
+
+    const sockets = await io.in(code).fetchSockets();
+    let whiteOnline = false;
+    let blackOnline = false;
+
+    for (const s of sockets) {
+        const playerId = Number( s.data.joueurId );
+        if (playerId === Number(game.joueur_blanc_id)) whiteOnline = true;
+        if (playerId === Number(game.joueur_noir_id)) blackOnline = true;
+    }
+    return {
+        id: game.id,
+        code: game.code,
+        statut: game.statut,
+        FEN: game.FEN ?? "start",
+        joueur_blanc_id: game.joueur_blanc_id,
+        joueur_noir_id: game.joueur_noir_id,
+        joueur_blanc_login: game.joueur_blanc_login,
+        joueur_noir_login: game.joueur_noir_login,
+        whiteOnline,
+        blackOnline,
+    };
+}
 
 export function initSocket(server) {
     if (!server) {
@@ -16,6 +48,20 @@ export function initSocket(server) {
             origin: "http://localhost:5173",
             credentials: true,
         },
+    });
+
+    //Vérifie le jeton du joueur à la connexion
+
+    io.use((socket, next) => {
+        const token = socket.handshake.auth?.token;
+        if (token) {
+            const player = verifyPlayerToken(token);
+            if (!player) {
+                return next(new Error("Jeton invalide"));
+            }
+            socket.data.player = player;
+        }
+        next();
     });
 
     io.on("connection", (socket) => {
@@ -34,6 +80,7 @@ export function initSocket(server) {
                 return;
             }
 
+
             socket.emit("partie:etat", {
                 id: game.id,
                 code: game.code,
@@ -44,6 +91,14 @@ export function initSocket(server) {
                 joueur_blanc_login: game.joueur_blanc_login,
                 joueur_noir_login: game.joueur_noir_login,
             });
+            // Récupère l'état complet avec la présence en ligne
+            const state = await getGameState(roomCode, io);
+            if (!state) {
+                socket.emit("partie:erreur", { message: "Partie introuvable." });
+                return;
+            }
+            // Diffuse le nouvel état à tout le monde dans le salon
+            io.to(roomCode).emit("partie:etat", state);
         });
 
         socket.on("coup:joue", async ({ code, joueurId, from, to, promotion = "q", fen }) => {
@@ -100,6 +155,9 @@ export function initSocket(server) {
                     return;
                 }
 
+                // Récupère l'état actualisé avec la présence
+                const state = await getGameState(roomCode, io);
+
                 // Diffuser le coup
                 io.to(code).emit("coup:annonce", {
                     code,
@@ -110,11 +168,29 @@ export function initSocket(server) {
                     fen: nouveauFen,
                     san: move.san,
                 });
+                io.to(roomCode).emit("partie:etat", state);
             } catch (err) {
                 console.error("Erreur coup:joue", err);
                 socket.emit("coup:erreur", { message: err.message });
             }
         });
+        // 3. Gestion de la déconnexion pour mettre à jour la présence instantanément
+        socket.on("disconnect", async () => {
+            const roomCode = socket.data.code;
+            if (roomCode) {
+                try {
+                    setTimeout(async () => {
+                        const state = await getGameState(roomCode, io);
+                        if (state) {
+                            io.to(roomCode).emit("partie:etat", state);
+                        }
+                    }, 100);
+                } catch (err) {
+                    console.error("Erreur lors de la déconnexion:", err);
+                }
+            }
+        });
+        
     });
 
     return io;
