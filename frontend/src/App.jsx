@@ -9,12 +9,13 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { Chess } from "chess.js";
 
-const socket = io("http://localhost:3000", { withCredentials: true });
+//const socket = io("http://localhost:3000", { withCredentials: true });
 
 function App() {
 
     // État du compte utilisateur connecté
     const [compte, setCompte] = useState(null);
+    const [token, setToken] = useState(null);
 
     // Indique la page actuelle : "choix", "attente", "joindre", "echiquier", "historique" ou "terminee"
     const [page, setPage] = useState("choix");
@@ -27,6 +28,73 @@ function App() {
     const [erreurSauvegarde, setErreurSauvegarde] = useState(null);
     const [eloBlanc, setEloBlanc] = useState(null);
     const [eloNoir, setEloNoir] = useState(null);
+
+
+    const socketRef = useRef(null);
+
+
+    // Initialisation ou mise à jour de la connexion socket avec le jeton d'authentification
+    useEffect(() => {
+        if (socketRef.current) {
+            socketRef.current.disconnect();
+        }
+
+        // On passe le token dans l'objet 'auth' de Socket.io (Jalon 1)
+        socketRef.current = io("http://localhost:3000", {
+            withCredentials: true,
+            auth: token ? { token } : {}
+        });
+
+        const currentSocket = socketRef.current;
+
+        const handlePartieEtat = (partie) => {
+            const partieNormalisee = {
+                ...partie,
+                joueur_blanc_id: partie.joueur_blanc_id ?? partie.joueurBlancId,
+                joueur_noir_id: partie.joueur_noir_id ?? partie.joueurNoirId,
+                joueur_blanc_login: partie.joueur_blanc_login ?? partie.joueurBlancLogin,
+                joueur_noir_login: partie.joueur_noir_login ?? partie.joueurNoirLogin,
+                // Récupération des statuts en ligne calculés par le serveur (Jalon 2)
+                whiteOnline: partie.whiteOnline,
+                blackOnline: partie.blackOnline,
+            };
+
+            const moi = Number(compte?.id);
+            const jeSuisBlanc = Number(partieNormalisee.joueur_blanc_id) === moi;
+
+            setPartie(partieNormalisee);
+            if (partieNormalisee.id) setPartieId(partieNormalisee.id);
+            setPositionInitiale(partieNormalisee.FEN || new Chess().fen());
+            setAdversaire(
+                jeSuisBlanc ? partieNormalisee.joueur_noir_login : partieNormalisee.joueur_blanc_login,
+            );
+
+            if (partieNormalisee.statut === "en_cours") {
+                setPage("echiquier");
+            }
+        };
+
+        currentSocket.on("partie:etat", handlePartieEtat);
+
+        const handlePartieQuittee = ({ code, message }) => {
+            if (!codePartie || code !== codePartie) return;
+
+            setPartieQuittee(message);
+            setCodePartie(null);
+            setPartieId(null);
+            setPartie(null);
+            setAdversaire(null);
+            setPositionInitiale(new Chess().fen());
+            setPage("choix");
+        };
+
+        currentSocket.on("partie:quitte", handlePartieQuittee);
+
+        return () => {
+            currentSocket.off("partie:etat", handlePartieEtat);
+            currentSocket.off("partie:quitte", handlePartieQuittee);
+        };
+    }, [token, codePartie, compte?.id]);
 
     // Vérifie si l'utilisateur est déjà connecté en récupérant les informations de son compte depuis le backend
     useEffect(() => {
@@ -66,6 +134,7 @@ function App() {
 
             const partie = await response.json();
             setCodePartie(partie.code);
+            setToken(partie.token);
             setPage("attente");
         } catch (error) {
             console.error(error);
@@ -174,45 +243,40 @@ function App() {
     };
 
     useEffect(() => {
-        if (!codePartie || !compte?.id) return undefined;
+        if (!codePartie || !compte?.id || !socketRef.current) return undefined;
 
-        socket.emit("partie:rejoindre", {
+        // Émet l'événement pour rejoindre la room sur le serveur
+        socketRef.current.emit("partie:rejoindre", {
             code: codePartie,
             joueurId: compte.id,
         });
 
         const handlePartieEtat = (partie) => {
-            if (partie.statut !== "en_cours") return;
-
             const partieNormalisee = {
                 ...partie,
                 joueur_blanc_id: partie.joueur_blanc_id ?? partie.joueurBlancId,
                 joueur_noir_id: partie.joueur_noir_id ?? partie.joueurNoirId,
                 joueur_blanc_login: partie.joueur_blanc_login ?? partie.joueurBlancLogin,
                 joueur_noir_login: partie.joueur_noir_login ?? partie.joueurNoirLogin,
+                // Récupération des statuts en ligne calculés par le serveur
+                whiteOnline: partie.whiteOnline,
+                blackOnline: partie.blackOnline,
             };
 
             const moi = Number(compte.id);
             const jeSuisBlanc = Number(partieNormalisee.joueur_blanc_id) === moi;
 
             setPartie(partieNormalisee);
-            setPartieId(partieNormalisee.id);
+            if (partieNormalisee.id) setPartieId(partieNormalisee.id);
             setPositionInitiale(partieNormalisee.FEN || new Chess().fen());
             setAdversaire(
                 jeSuisBlanc ? partieNormalisee.joueur_noir_login : partieNormalisee.joueur_blanc_login,
             );
-            setPage("echiquier");
+
+            if (partieNormalisee.statut === "en_cours") {
+                setPage("echiquier");
+            }
         };
-
-        socket.on("partie:etat", handlePartieEtat);
-
-        return () => {
-            socket.off("partie:etat", handlePartieEtat);
-        };
-    }, [codePartie, compte?.id]);
-
-    useEffect(() => {
-        if (!compte?.id) return undefined;
 
         const handlePartieQuittee = ({ code, message }) => {
             if (!codePartie || code !== codePartie) return;
@@ -226,12 +290,18 @@ function App() {
             setPage("choix");
         };
 
-        socket.on("partie:quitte", handlePartieQuittee);
+        // Enregistrement des écouteurs sur socketRef.current
+        socketRef.current.on("partie:etat", handlePartieEtat);
+        socketRef.current.on("partie:quitte", handlePartieQuittee);
 
+        // Nettoyage des écouteurs lors du démontage ou du changement de dépendances
         return () => {
-            socket.off("partie:quitte", handlePartieQuittee);
+            if (socketRef.current) {
+                socketRef.current.off("partie:etat", handlePartieEtat);
+                socketRef.current.off("partie:quitte", handlePartieQuittee);
+            }
         };
-    }, [compte?.id, codePartie]);
+    }, [codePartie, compte?.id, token]);
 
     return (
         <section className="hero is-fullheight" style={{ backgroundColor: "#6b4f3a" }}>
@@ -264,7 +334,7 @@ function App() {
                         <HistoriqueParties joueur={compte} />
                     ) : page === "echiquier" ? (
                         <Echiquier
-                            socket={socket}
+                            socket={socketRef.current}
                             positionInitiale={positionInitiale}
                             adversaire={adversaire}
                             eloBlanc={eloBlanc}
@@ -275,10 +345,16 @@ function App() {
                             partieQuittee={partieQuittee}
                             onMove={sauvegarderPosition}
                             erreurSauvegarde={erreurSauvegarde}
+
+                            whiteOnline={partie?.whiteOnline}
+                            blackOnline={partie?.blackOnline}
+                            joueurBlancLogin={partie?.joueur_blanc_login}
+                            joueurNoirLogin={partie?.joueur_noir_login}
                         />
                     ) : page === "joindre" ? (
                         <JoindrePartie onRejoint={(code, partie) => {
                             setCodePartie(code);
+                            if (partie.token) setToken(partie.token);
                             setPartieId(partie.id);
                             setPositionInitiale(partie.FEN || new Chess().fen());
                             setAdversaire(partie.adversaire);
@@ -286,6 +362,7 @@ function App() {
                             setEloNoir(partie.joueur_est_blanc ? partie.elo_adversaire : partie.elo_joueur);
                             setPartieQuittee(null);
                             setPage("echiquier");
+
                         }} />
                     ) : (
                         <CreerPartiePrive

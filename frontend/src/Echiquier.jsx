@@ -2,13 +2,39 @@ import { useEffect, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, onMove, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId }) {
+function Pastille({ enLigne, taille = 12 }) {
+    return (
+        <span
+            title={enLigne ? "En ligne" : "Hors ligne"}
+            style={{
+                display: "inline-block",
+                width: taille,
+                height: taille,
+                flex: `0 0 ${taille}px`,
+                borderRadius: "50%",
+                backgroundColor: enLigne ? "#48c774" : "#b5b5b5",
+                marginRight: 8,
+            }}
+        />
+    );
+}
+
+function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, onMove, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId, joueurBlancLogin, joueurNoirLogin, whiteOnline, blackOnline }) {
     const [nombrePoints, setNombrePoints] = useState(1);
     const [game, setGame] = useState(() => new Chess(positionInitiale));
 
+
     // Logique pour permettre seulement au joueur à qui est le tour de bouger les pièces 
-    const maCouleur = monJoueurId === joueurBlancId ? "w" : "b";
+    const jeSuisBlanc = Number(monJoueurId) === Number(joueurBlancId);
+    const maCouleur = jeSuisBlanc ? "w" : "b";
     const monTourReel = game.turn() === maCouleur;
+
+    
+    const loginAdv = jeSuisBlanc ? joueurNoirLogin : joueurBlancLogin;
+    
+    const advEnLigne = jeSuisBlanc ? blackOnline : whiteOnline;
+    
+    const eloAdv = jeSuisBlanc ? eloNoir : eloBlanc;
 
     useEffect(() => {
         setGame(new Chess(positionInitiale));
@@ -119,7 +145,19 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                     </p>
                 )}
 
-                {partieQuittee || game.isGameOver() ? (
+                {/* --- AFFICHAGE PERMANENT DES PSEUDOS ET DES PASTILLES DE PRÉSENCE --- */}
+                <div className="has-text-white mb-4">
+                    <p className="is-flex is-align-items-center is-justify-content-center">
+                        <Pastille enLigne={!!advEnLigne} />
+                        <span>Adversaire : <strong>{loginAdv ?? adversaire}</strong></span>
+                        {eloAdv && <span className="tag is-dark ml-2">Elo : {eloAdv}</span>}
+                    </p>
+
+                    
+                </div>
+
+                {/* --- MESSAGE DE FIN DE PARTIE SI NÉCESSAIRE --- */}
+                {(partieQuittee || game.isGameOver()) && (
                     <p className="has-text-white mb-4">
                         {game.isCheckmate()
                             ? "La partie est terminée par échec et mat."
@@ -127,22 +165,9 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                                 ? "La partie s'est terminée sur un match nul."
                                 : "La partie est terminée."}
                     </p>
-                ) : (
-                    <div className="has-text-white mb-4">
-                        {/* Affichage de l'adversaire et de son Elo */}
-                        <p>
-                            Adversaire : <strong>{adversaire}</strong>
-                            {eloNoir && <span className="tag is-dark ml-2">Elo : {eloNoir}</span>}
-                        </p>
-                        {/* Affichage de ton Elo (Blancs) */}
-                        {eloBlanc && (
-                            <p className="is-size-7 mt-1">
-                                Mon Elo : <span className="has-text-weight-bold">{eloBlanc}</span>
-                            </p>
-                        )}
-                    </div>
                 )}
 
+                {/* --- L'ÉCHIQUIER --- */}
                 {!partieQuittee && (
                     <div
                         className="mx-auto"
