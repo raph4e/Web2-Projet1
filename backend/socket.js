@@ -5,13 +5,13 @@ import { verifyPlayerToken } from "./session.js";
 
 /* Calcule l'etat de la partie + presense en ligne des joueurs  */
 
-async function getGameState(code) {
+async function getGameState(code,ioInstance) {
     const game = await findGame(code.toUpperCase());
     if (!game) {
         return null;
     }
 
-    const sockets = await io.in(code).fetchSockets();
+    const sockets = await ioInstance.in(code).fetchSockets();
     let whiteOnline = false;
     let blackOnline = false;
 
@@ -80,27 +80,17 @@ export function initSocket(server) {
                 return;
             }
 
-
-            socket.emit("partie:etat", {
-                id: game.id,
-                code: game.code,
-                statut: game.statut,
-                FEN: game.FEN ?? "start",
-                joueur_blanc_id: game.joueur_blanc_id,
-                joueur_noir_id: game.joueur_noir_id,
-                joueur_blanc_login: game.joueur_blanc_login,
-                joueur_noir_login: game.joueur_noir_login,
-            });
-            // Récupère l'état complet avec la présence en ligne
+            // Récupère directement l'état complet avec la présence en ligne
             const state = await getGameState(roomCode, io);
             if (!state) {
                 socket.emit("partie:erreur", { message: "Partie introuvable." });
                 return;
             }
-            // Diffuse le nouvel état à tout le monde dans le salon
+
+            // Diffuse l'état complet à tout le monde dans le salon d'un seul coup
             io.to(roomCode).emit("partie:etat", state);
         });
-
+        
         socket.on("coup:joue", async ({ code, joueurId, from, to, promotion = "q", fen }) => {
             try {
                 // Vérifier que la partie existe bel et bien
@@ -156,6 +146,7 @@ export function initSocket(server) {
                 }
 
                 // Récupère l'état actualisé avec la présence
+                const roomCode = code.toUpperCase();
                 const state = await getGameState(roomCode, io);
 
                 // Diffuser le coup

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, onMove, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId }) {
+function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, onMove, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId, whiteOnline, blackOnline }) {
     const [nombrePoints, setNombrePoints] = useState(1);
     const [game, setGame] = useState(() => new Chess(positionInitiale));
 
@@ -119,7 +119,46 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                     </p>
                 )}
 
-                {partieQuittee || game.isGameOver() ? (
+                {/* --- AFFICHAGE PERMANENT DES PSEUDOS ET DES PASTILLES DE PRÉSENCE --- */}
+                <div className="has-text-white mb-4">
+                    {/* Adversaire */}
+                    <p className="is-flex is-align-items-center is-justify-content-center">
+                        <span 
+                            style={{
+                                height: '12px',
+                                width: '12px',
+                                flex: '0 0 12px',
+                                backgroundColor: (Number(monJoueurId) === Number(joueurBlancId) ? blackOnline : whiteOnline) ? '#48c774' : '#dbdbdb',
+                                borderRadius: '50%',
+                                display: 'inline-block',
+                                marginRight: '8px'
+                            }} 
+                            title={(Number(monJoueurId) === Number(joueurBlancId) ? blackOnline : whiteOnline) ? "En ligne" : "Hors ligne"}
+                        />
+                        <span>Adversaire : <strong>{adversaire}</strong></span>
+                        {eloNoir && <span className="tag is-dark ml-2">Elo : {eloNoir}</span>}
+                    </p>
+
+                    {/* Votre profil */}
+                    <p className="is-size-7 mt-1 is-flex is-align-items-center is-justify-content-center">
+                        <span 
+                            style={{
+                                height: '10px',
+                                width: '10px',
+                                flex: '0 0 10px',
+                                backgroundColor: (Number(monJoueurId) === Number(joueurBlancId) ? whiteOnline : blackOnline) ? '#48c774' : '#dbdbdb',
+                                borderRadius: '50%',
+                                display: 'inline-block',
+                                marginRight: '8px'
+                            }} 
+                            title={(Number(monJoueurId) === Number(joueurBlancId) ? whiteOnline : blackOnline) ? "En ligne" : "Hors ligne"}
+                        />
+                        <span>Mon Profil {eloBlanc ? `: Elo ${eloBlanc}` : ""}</span>
+                    </p>
+                </div>
+
+                {/* --- MESSAGE DE FIN DE PARTIE SI NÉCESSAIRE --- */}
+                {(partieQuittee || game.isGameOver()) && (
                     <p className="has-text-white mb-4">
                         {game.isCheckmate()
                             ? "La partie est terminée par échec et mat."
@@ -127,22 +166,9 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                                 ? "La partie s'est terminée sur un match nul."
                                 : "La partie est terminée."}
                     </p>
-                ) : (
-                    <div className="has-text-white mb-4">
-                        {/* Affichage de l'adversaire et de son Elo */}
-                        <p>
-                            Adversaire : <strong>{adversaire}</strong>
-                            {eloNoir && <span className="tag is-dark ml-2">Elo : {eloNoir}</span>}
-                        </p>
-                        {/* Affichage de ton Elo (Blancs) */}
-                        {eloBlanc && (
-                            <p className="is-size-7 mt-1">
-                                Mon Elo : <span className="has-text-weight-bold">{eloBlanc}</span>
-                            </p>
-                        )}
-                    </div>
                 )}
 
+                {/* --- L'ÉCHIQUIER --- */}
                 {!partieQuittee && (
                     <div
                         className="mx-auto"
