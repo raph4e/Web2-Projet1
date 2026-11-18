@@ -1,7 +1,8 @@
 import { Server } from "socket.io";
-import { findGame, updateGameFEN } from "./repository/parties.js";
 import { Chess } from "chess.js";
-import { verifyPlayerToken } from "./session.js";
+import { currentAccount } from "./auth.js";
+import { findGame, updateGameFEN, leaveGame, updatePlayersElo } from "./repository/parties.js";
+import { scoreBlancDepuisFen } from "./repository/outils.js";
 
 /* Calcule l'etat de la partie + presense en ligne des joueurs  */
 
@@ -16,7 +17,8 @@ async function getGameState(code,ioInstance) {
     let blackOnline = false;
 
     for (const s of sockets) {
-        const playerId = Number( s.data.joueurId );
+        // L'identité vient du cookie de session (socket.data.account), jamais du client
+        const playerId = Number(s.data.account?.id);
         if (playerId === Number(game.joueur_blanc_id)) whiteOnline = true;
         if (playerId === Number(game.joueur_noir_id)) blackOnline = true;
     }
@@ -50,29 +52,26 @@ export function initSocket(server) {
         },
     });
 
-    //Vérifie le jeton du joueur à la connexion
-
-    io.use((socket, next) => {
-        const token = socket.handshake.auth?.token;
-        if (token) {
-            const player = verifyPlayerToken(token);
-            if (!player) {
-                return next(new Error("Jeton invalide"));
-            }
-            socket.data.player = player;
+    // Le portier : lit le cookie de session une seule fois, à l'ouverture de la connexion.
+    // Pas de compte = spectateur (account = null) : il peut regarder, mais pas jouer.
+    io.use(async (socket, next) => {
+        try {
+            const compte = await currentAccount(socket.request);
+            socket.data.account = compte;
+            next();
+        } catch (err) {
+            next(err);
         }
-        next();
     });
 
     io.on("connection", (socket) => {
 
         // On envoie aussi l'état de la partie pour la reconnexion (exigence technique)
-        socket.on("partie:rejoindre", async ({ code, joueurId }) => {
+        socket.on("partie:rejoindre", async ({ code }) => {
             const roomCode = String(code).toUpperCase();
 
             socket.join(roomCode);
             socket.data.code = roomCode;
-            socket.data.joueurId = joueurId;
 
             const game = await findGame(roomCode);
             if (!game) {
@@ -90,9 +89,15 @@ export function initSocket(server) {
             // Diffuse l'état complet à tout le monde dans le salon d'un seul coup
             io.to(roomCode).emit("partie:etat", state);
         });
-        
-        socket.on("coup:joue", async ({ code, joueurId, from, to, promotion = "q", fen }) => {
+
+        socket.on("coup:joue", async ({ code, from, to, promotion = "q" }) => {
             try {
+                // Vérifier que la personne est connectée (pas un spectateur)
+                const account = socket.data.account;
+                if (!account) {
+                    socket.emit("coup:erreur", { message: "Les spectateurs ne peuvent pas jouer." });
+                    return;
+                }
                 // Vérifier que la partie existe bel et bien
                 const game = await findGame(code.toUpperCase());
                 if (!game) {
@@ -103,7 +108,7 @@ export function initSocket(server) {
                 // Vérifie que c'est bel et bien au tour du joueur
                 const joueurBlancId = Number(game.joueur_blanc_id);
                 const joueurNoirId = Number(game.joueur_noir_id);
-                const idJoueur = Number(joueurId);
+                const idJoueur = Number(account.id);
 
                 const estBlanc = joueurBlancId === idJoueur;
                 const estNoir = joueurNoirId === idJoueur;
@@ -113,7 +118,8 @@ export function initSocket(server) {
                     return;
                 }
 
-                const chess = new Chess(fen);
+                // La position vient de la base de données, jamais du message du client
+                const chess = game.FEN ? new Chess(game.FEN) : new Chess();
                 const couleurAJouer = chess.turn();
                 // Si le joueur est blanc et que le FEN dit "w", il peut jouer
                 // Si le joueur est blanc et que le FEN dit "b", il ne peut pas jouer
@@ -139,33 +145,72 @@ export function initSocket(server) {
                 const nouveauFen = chess.fen();
 
                 // Enregistrer dans la DB
-                const updated = await updateGameFEN(game.id, nouveauFen, joueurId);
+                const updated = await updateGameFEN(game.id, nouveauFen, account.id);
                 if (!updated) {
                     socket.emit("coup:erreur", { message: "Partie inaccessible ou ce n'est pas ton tour." });
                     return;
                 }
 
-                // Récupère l'état actualisé avec la présence
-                const roomCode = code.toUpperCase();
-                const state = await getGameState(roomCode, io);
-
-                // Diffuser le coup
-                io.to(code).emit("coup:annonce", {
-                    code,
-                    joueurId,
+                // Diffuser le coup (les rooms sont nommées avec le code en majuscules)
+                const roomCode = String(code).toUpperCase();
+                io.to(roomCode).emit("coup:annonce", {
+                    code: roomCode,
+                    joueurId: account.id,
                     from,
                     to,
                     promotion,
                     fen: nouveauFen,
                     san: move.san,
                 });
-                io.to(roomCode).emit("partie:etat", state);
+
+                // Fin de partie : c'est le serveur qui calcule le résultat, à partir de SA position
+                const scoreBlanc = scoreBlancDepuisFen(nouveauFen);
+                if (scoreBlanc !== null) {
+                    const terminee = await updatePlayersElo(roomCode, account.id, scoreBlanc);
+                    if (terminee) {
+                        io.to(roomCode).emit("partie:terminee", { code: roomCode, scoreBlanc });
+                    }
+                }
+
+                // Diffuse l'état actualisé (position + présence) à toute la room
+                const state = await getGameState(roomCode, io);
+                if (state) io.to(roomCode).emit("partie:etat", state);
             } catch (err) {
                 console.error("Erreur coup:joue", err);
                 socket.emit("coup:erreur", { message: err.message });
             }
         });
-        // 3. Gestion de la déconnexion pour mettre à jour la présence instantanément
+
+        socket.on("partie:abandonner", async ({ code }) => {
+            try {
+                const roomCode = String(code).toUpperCase();
+
+                // 1. Refuser les spectateurs
+                const account = socket.data.account;
+                if (!account) {
+                    socket.emit("partie:erreur", { message: "Les spectateurs ne peuvent pas abandonner." });
+                    return;
+                }
+
+                // 2. Quitter la partie (refusé si le joueur ne fait pas partie de cette partie)
+                const left = await leaveGame(roomCode, account.id);
+                if (!left) {
+                    socket.emit("partie:erreur", { message: "Tu ne fais pas partie de cette partie." });
+                    return;
+                }
+
+                // 3. Prévenir tout le monde dans la room
+                io.to(roomCode).emit("partie:quitte", {
+                    code: roomCode,
+                    message: `${account.login} a abandonné la partie`,
+                });
+            } catch (err) {
+                console.error("Erreur partie:abandonner", err);
+                socket.emit("partie:erreur", { message: err.message });
+            }
+        });
+
+        // Gestion de la déconnexion pour mettre à jour la présence instantanément
         socket.on("disconnect", async () => {
             const roomCode = socket.data.code;
             if (roomCode) {
@@ -181,7 +226,6 @@ export function initSocket(server) {
                 }
             }
         });
-        
     });
 
     return io;

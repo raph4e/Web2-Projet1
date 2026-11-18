@@ -7,13 +7,12 @@ export async function updateGameFEN(gameId, FEN, playerId) {
     const resultat = await db.query(
         `UPDATE coups
          SET "FEN" = $1
-         WHERE partie_id = $2
-           AND EXISTS (
-               SELECT 1
+         WHERE partie_id IN (
+               SELECT id
                FROM parties
-               WHERE parties.id = coups.partie_id
-                 AND parties.statut = 'en_cours'
-                 AND (parties.joueur_blanc_id = $3 OR parties.joueur_noir_id = $3)
+               WHERE id = $2
+                 AND statut = 'en_cours'
+                 AND (joueur_blanc_id = $3 OR joueur_noir_id = $3)
            )`,
         [FEN, gameId, playerId],
     );
@@ -166,23 +165,24 @@ export function updatePlayersElo(code, playerId, scoreBlanc) {
         const { rows } = await client.query(
             `UPDATE parties
              SET statut = 'terminee',
-                 resultat = CASE
-                     WHEN $1::numeric = 0.5 THEN 'Match nul'
-                     WHEN $1::numeric = 1 THEN (
-                         SELECT login FROM joueurs WHERE id = parties.joueur_blanc_id
-                     )
-                     ELSE (
-                         SELECT login FROM joueurs WHERE id = parties.joueur_noir_id
-                     )
-                 END,
                  date_fin = CURRENT_TIMESTAMP
-             WHERE code = $2 AND statut = 'en_cours'
-               AND (joueur_blanc_id = $3 OR joueur_noir_id = $3)
-             RETURNING joueur_blanc_id, joueur_noir_id`,
-            [scoreBlanc, code, playerId],
+             WHERE code = $1 AND statut = 'en_cours'
+               AND (joueur_blanc_id = $2 OR joueur_noir_id = $2)
+             RETURNING id, joueur_blanc_id, joueur_noir_id`,
+            [code, playerId],
         );
         const game = rows[0];
         if (!game) return false;
+
+        // Le résultat (login du gagnant ou "Match nul") est écrit dans la même transaction.
+        // Requête séparée plutôt qu'une sous-requête corrélée : pg-mem (base des tests) ne les gère pas.
+        let resultat = "Match nul";
+        if (scoreBlanc !== 0.5) {
+            const gagnantId = scoreBlanc === 1 ? game.joueur_blanc_id : game.joueur_noir_id;
+            const gagnant = await client.query("SELECT login FROM joueurs WHERE id = $1", [gagnantId]);
+            resultat = gagnant.rows[0]?.login ?? null;
+        }
+        await client.query("UPDATE parties SET resultat = $1 WHERE id = $2", [resultat, game.id]);
 
         await applyPlayersElo(client, game.joueur_blanc_id, game.joueur_noir_id, scoreBlanc);
         return true;

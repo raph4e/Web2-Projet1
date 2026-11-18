@@ -123,7 +123,6 @@ function App() {
                 method: "POST",
                 credentials: "include",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ FEN: new Chess().fen() }),
             });
 
             if (!response.ok) {
@@ -164,34 +163,15 @@ function App() {
         }
     };
 
-    const sauvegarderPosition = async (FEN, scoreBlanc) => {
-        try {
-            const response = await fetch(`http://localhost:3000/api/parties/${partieId}/fen`, {
-                method: "PATCH",
-                credentials: "include",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ FEN }),
-            });
-            if (!response.ok) {
-                const resultat = await response.json();
-                throw new Error(resultat.erreur ?? "Impossible d'enregistrer la position.");
-            }
+    // Le serveur enregistre chaque coup, détecte la fin de partie et met à jour l'Elo lui-même.
+    // Quand il annonce "partie:terminee", on recharge seulement le profil pour afficher le nouvel Elo.
+    useEffect(() => {
+        const currentSocket = socketRef.current;
+        if (!codePartie || !currentSocket) return undefined;
 
-            if (scoreBlanc !== null) {
-                const finResponse = await fetch(
-                    `http://localhost:3000/api/parties/${codePartie}/terminer`,
-                    {
-                        method: "POST",
-                        credentials: "include",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ scoreBlanc }),
-                    },
-                );
-                if (!finResponse.ok) {
-                    const resultat = await finResponse.json();
-                    throw new Error(resultat.erreur ?? "Impossible de terminer la partie.");
-                }
-
+        const handlePartieTerminee = async ({ code }) => {
+            if (code !== codePartie) return;
+            try {
                 const compteResponse = await fetch("http://localhost:3000/api/me", {
                     credentials: "include",
                     cache: "no-store",
@@ -200,13 +180,17 @@ function App() {
                     throw new Error("La partie est terminée, mais le classement n’a pas pu être actualisé.");
                 }
                 setCompte(await compteResponse.json());
+                setErreurSauvegarde(null);
+            } catch (error) {
+                setErreurSauvegarde(error.message);
             }
+        };
 
-            setErreurSauvegarde(null);
-        } catch (error) {
-            setErreurSauvegarde(error.message);
-        }
-    };
+        currentSocket.on("partie:terminee", handlePartieTerminee);
+        return () => {
+            currentSocket.off("partie:terminee", handlePartieTerminee);
+        };
+    }, [codePartie, compte?.id, token]);
 
     // Retourne à la page de choix de création ou de jonction de partie, en supprimant la partie si l'utilisateur était dans une partie en attente ou en cours.
     const retournerAuChoix = async () => {
@@ -248,7 +232,6 @@ function App() {
         // Émet l'événement pour rejoindre la room sur le serveur
         socketRef.current.emit("partie:rejoindre", {
             code: codePartie,
-            joueurId: compte.id,
         });
 
         const handlePartieEtat = (partie) => {
@@ -343,7 +326,6 @@ function App() {
                             monJoueurId={compte?.id}
                             joueurBlancId={partie?.joueur_blanc_id}
                             partieQuittee={partieQuittee}
-                            onMove={sauvegarderPosition}
                             erreurSauvegarde={erreurSauvegarde}
 
                             whiteOnline={partie?.whiteOnline}
