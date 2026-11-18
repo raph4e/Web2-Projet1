@@ -4,6 +4,38 @@ import { currentAccount } from "./auth.js";
 import { findGame, updateGameFEN, leaveGame, updatePlayersElo } from "./repository/parties.js";
 import { scoreBlancDepuisFen } from "./repository/outils.js";
 
+/* Calcule l'etat de la partie + presense en ligne des joueurs  */
+
+async function getGameState(code,ioInstance) {
+    const game = await findGame(code.toUpperCase());
+    if (!game) {
+        return null;
+    }
+
+    const sockets = await ioInstance.in(code).fetchSockets();
+    let whiteOnline = false;
+    let blackOnline = false;
+
+    for (const s of sockets) {
+        // L'identité vient du cookie de session (socket.data.account), jamais du client
+        const playerId = Number(s.data.account?.id);
+        if (playerId === Number(game.joueur_blanc_id)) whiteOnline = true;
+        if (playerId === Number(game.joueur_noir_id)) blackOnline = true;
+    }
+    return {
+        id: game.id,
+        code: game.code,
+        statut: game.statut,
+        FEN: game.FEN ?? "start",
+        joueur_blanc_id: game.joueur_blanc_id,
+        joueur_noir_id: game.joueur_noir_id,
+        joueur_blanc_login: game.joueur_blanc_login,
+        joueur_noir_login: game.joueur_noir_login,
+        whiteOnline,
+        blackOnline,
+    };
+}
+
 export function initSocket(server) {
     if (!server) {
         return {
@@ -47,16 +79,15 @@ export function initSocket(server) {
                 return;
             }
 
-            socket.emit("partie:etat", {
-                id: game.id,
-                code: game.code,
-                statut: game.statut,
-                FEN: game.FEN ?? "start",
-                joueur_blanc_id: game.joueur_blanc_id,
-                joueur_noir_id: game.joueur_noir_id,
-                joueur_blanc_login: game.joueur_blanc_login,
-                joueur_noir_login: game.joueur_noir_login,
-            });
+            // Récupère directement l'état complet avec la présence en ligne
+            const state = await getGameState(roomCode, io);
+            if (!state) {
+                socket.emit("partie:erreur", { message: "Partie introuvable." });
+                return;
+            }
+
+            // Diffuse l'état complet à tout le monde dans le salon d'un seul coup
+            io.to(roomCode).emit("partie:etat", state);
         });
 
         socket.on("coup:joue", async ({ code, from, to, promotion = "q" }) => {
@@ -140,6 +171,10 @@ export function initSocket(server) {
                         io.to(roomCode).emit("partie:terminee", { code: roomCode, scoreBlanc });
                     }
                 }
+
+                // Diffuse l'état actualisé (position + présence) à toute la room
+                const state = await getGameState(roomCode, io);
+                if (state) io.to(roomCode).emit("partie:etat", state);
             } catch (err) {
                 console.error("Erreur coup:joue", err);
                 socket.emit("coup:erreur", { message: err.message });
@@ -172,6 +207,23 @@ export function initSocket(server) {
             } catch (err) {
                 console.error("Erreur partie:abandonner", err);
                 socket.emit("partie:erreur", { message: err.message });
+            }
+        });
+
+        // Gestion de la déconnexion pour mettre à jour la présence instantanément
+        socket.on("disconnect", async () => {
+            const roomCode = socket.data.code;
+            if (roomCode) {
+                try {
+                    setTimeout(async () => {
+                        const state = await getGameState(roomCode, io);
+                        if (state) {
+                            io.to(roomCode).emit("partie:etat", state);
+                        }
+                    }, 100);
+                } catch (err) {
+                    console.error("Erreur lors de la déconnexion:", err);
+                }
             }
         });
     });

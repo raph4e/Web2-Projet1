@@ -13,6 +13,7 @@ import {
 import { FEN_DEPART, scoreBlancDepuisFen } from "./repository/outils.js";
 import { requireAccount } from "./authorization.js";
 import { initSocket } from "./socket.js";
+import { signPlayerToken } from "./session.js";
 
 export const app = express();
 const PORT = 3000;
@@ -67,7 +68,10 @@ app.post("/api/parties", requireAccount, async (req, res) => {
         if (!code) {
             return res.status(409).json({ erreur: "Vous êtes déjà dans une partie active." });
         }
-        res.status(201).json({ code });
+        // Génération du jeton 
+        const token = signPlayerToken(code, req.account.id);
+        res.status(201).json({ code,token });
+
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }
@@ -148,8 +152,10 @@ app.post("/api/parties/:code/rejoindre", requireAccount, async (req, res) => {
             joueur_blanc_login: game.joueur_blanc_login,
             joueur_noir_login: game.joueur_noir_login,
         });
+        //token pour le joueur qui rejoint la partie
+        const token = signPlayerToken(code, req.account.id);
 
-        res.json(joined);
+        res.json({ ...joined, token });
     } catch (err) {
         res.status(500).json({ erreur: err.message });
     }

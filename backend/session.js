@@ -55,6 +55,17 @@ export function writeSession(res, session) {
     maxAge: DUREE_MS, // le navigateur l'oublie au bout d'une semaine, lui aussi
     path: '/',
   });
+}   
+//Retourne un jeton signé spécifiquement pour un joueur dans une partie
+export function signPlayerToken(code, joueurId) {
+  return signSession({ code, joueurId, type: 'player_token' });
+}
+
+// Vérifie si le jeton du joueur est valide (signature et expiration)
+export function verifyPlayerToken(token) {
+  if (typeof token !== 'string') return null;
+  const payload = verifySession(token);
+  return payload.code && payload.joueurId ? payload : null;
 }
 
 // Efface la session dans la réponse : le navigateur l'oubliera. S'éxécute lorsque l'utilisateur se déconnecte.
