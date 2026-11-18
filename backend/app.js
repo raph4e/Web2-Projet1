@@ -8,9 +8,9 @@ import {
     findGame,
     joinGame,
     leaveGame,
-    updateGameFEN,
     updatePlayersElo,
 } from "./repository/parties.js";
+import { FEN_DEPART, scoreBlancDepuisFen } from "./repository/outils.js";
 import { requireAccount } from "./authorization.js";
 import { initSocket } from "./socket.js";
 
@@ -60,15 +60,10 @@ app.get("/api/joueurs/:id/parties", async (req, res) => {
 });
 
 // Route pour créer une partie si le joueur est connecté. Retourne le code de la partie créée ou une erreur si le joueur est déjà dans une partie.
+// La position de départ est imposée par le serveur : un FEN envoyé par le client est ignoré.
 app.post("/api/parties", requireAccount, async (req, res) => {
-
-    const { FEN } = req.body ?? {};
-    if (typeof FEN !== "string" || FEN.trim().length === 0) {
-        return res.status(400).json({ erreur: "Un FEN non vide est requis." });
-    }
-
     try {
-        const code = await createGame(req.account.id, FEN);
+        const code = await createGame(req.account.id, FEN_DEPART);
         if (!code) {
             return res.status(409).json({ erreur: "Vous êtes déjà dans une partie active." });
         }
@@ -78,42 +73,20 @@ app.post("/api/parties", requireAccount, async (req, res) => {
     }
 });
 
-// Route pour update la partie en cours
-app.patch("/api/parties/:id/fen", requireAccount, async (req, res) => {
-
-    const gameId = Number(req.params.id);
-    const { FEN } = req.body ?? {};
-    if (
-        !Number.isSafeInteger(gameId) ||
-        gameId <= 0 ||
-        typeof FEN !== "string" ||
-        FEN.trim().length === 0
-    ) {
-        return res.status(400).json({ erreur: "Un identifiant de partie positif et un FEN non vide sont requis." });
-    }
-
-    try {
-        const updated = await updateGameFEN(gameId, FEN, req.account.id);
-        if (!updated) return res.status(404).json({ erreur: "Partie introuvable ou non accessible." });
-        res.json({ partie_id: gameId, FEN });
-    } catch (err) {
-        res.status(500).json({ erreur: err.message });
-    }
-});
-
+// Termine une partie. Le résultat est calculé par le serveur à partir de la position
+// enregistrée en base : on ignore tout score envoyé par le client.
 app.post("/api/parties/:code/terminer", requireAccount, async (req, res) => {
-
-    const { scoreBlanc } = req.body ?? {};
-    if (![0, 0.5, 1].includes(scoreBlanc)) {
-        return res.status(400).json({ erreur: "Le score des blancs doit être 0, 0.5 ou 1." });
-    }
-
     try {
-        const updated = await updatePlayersElo(
-            req.params.code.toUpperCase(),
-            req.account.id,
-            scoreBlanc,
-        );
+        const code = req.params.code.toUpperCase();
+        const game = await findGame(code);
+        if (!game || !game.FEN) return res.status(404).json({ erreur: "Partie introuvable." });
+
+        const scoreBlanc = scoreBlancDepuisFen(game.FEN);
+        if (scoreBlanc === null) {
+            return res.status(409).json({ erreur: "La partie n'est pas terminée." });
+        }
+
+        const updated = await updatePlayersElo(code, req.account.id, scoreBlanc);
         if (!updated) return res.status(409).json({ erreur: "Cette partie est déjà terminée ou inaccessible." });
         res.json({ statut: "terminee" });
     } catch (err) {

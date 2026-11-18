@@ -1,4 +1,17 @@
 import db from "../db.js";
+import { Chess } from "chess.js";
+
+// Position de départ standard : le serveur l'impose, le client ne la choisit pas.
+export const FEN_DEPART = new Chess().fen();
+
+// Calcule le score des blancs à partir d'une position (FEN) venant de la base de données.
+// Retourne 1 (blancs gagnent), 0 (noirs gagnent), 0.5 (nulle) ou null si la partie continue.
+export function scoreBlancDepuisFen(fen) {
+    const chess = new Chess(fen);
+    if (chess.isCheckmate()) return chess.turn() === "b" ? 1 : 0; // le camp au trait est maté
+    if (chess.isDraw() || chess.isStalemate()) return 0.5;
+    return null;
+}
 
 // Exécute fn(client) dans une transaction PostgreSQL.
 // Avec un pool, chaque db.query() peut utiliser une connexion différente : pour qu'un

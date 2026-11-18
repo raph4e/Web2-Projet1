@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, onMove, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId }) {
+function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId }) {
     const [nombrePoints, setNombrePoints] = useState(1);
     const [game, setGame] = useState(() => new Chess(positionInitiale));
 
-    // Logique pour permettre seulement au joueur à qui est le tour de bouger les pièces 
+    // Logique pour permettre seulement au joueur à qui est le tour de bouger les pièces.
+    // monJoueurId sert seulement à l'affichage : il n'est jamais envoyé au serveur.
     const maCouleur = monJoueurId === joueurBlancId ? "w" : "b";
     const monTourReel = game.turn() === maCouleur;
 
@@ -15,7 +16,7 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
     }, [positionInitiale]);
 
     useEffect(() => {
-        if (!partieCode || !monJoueurId || !socket) return undefined;
+        if (!partieCode || !socket) return undefined;
 
         const handleCoupAnnonce = (data) => {
             setGame(new Chess(data.fen));
@@ -32,7 +33,7 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
             socket.off("coup:annonce", handleCoupAnnonce);
             socket.off("coup:erreur", handleCoupErreur);
         };
-    }, [partieCode, monJoueurId, socket]);
+    }, [partieCode, socket]);
 
     // Met à jour le nombre de points affichés pour l'animation de l'attente de l'adversaire
     useEffect(() => {
@@ -58,8 +59,6 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
         }
 
         try {
-            const fenAvant = game.fen();
-
             const gameCopy = new Chess(game.fen());
             const result = gameCopy.move({
                 from: sourceSquare,
@@ -70,22 +69,12 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
             if (result) {
                 socket.emit("coup:joue", {
                     code: partieCode,
-                    joueurId: monJoueurId,
                     from: sourceSquare,
                     to: targetSquare,
                     promotion: "q",
-                    fen: fenAvant,
                 });
 
                 setGame(gameCopy);
-                if (onMove) {
-                    const scoreBlanc = gameCopy.isCheckmate()
-                        ? gameCopy.turn() === "b" ? 1 : 0
-                        : gameCopy.isDraw() || gameCopy.isStalemate() ? 0.5 : null;
-
-                    onMove(gameCopy.fen(), scoreBlanc);
-                }
-
                 return true;
             }
         } catch {
