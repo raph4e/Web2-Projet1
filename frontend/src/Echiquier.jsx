@@ -19,21 +19,21 @@ function Pastille({ enLigne, taille = 12 }) {
     );
 }
 
-function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId, joueurBlancLogin, joueurNoirLogin, whiteOnline, blackOnline }) {
+function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId, joueurBlancLogin, joueurNoirLogin, whiteOnline, blackOnline, estSpectateur = false, nbSpectateurs = 0, }) {
     const [nombrePoints, setNombrePoints] = useState(1);
     const [game, setGame] = useState(() => new Chess(positionInitiale));
 
     // Logique pour permettre seulement au joueur à qui est le tour de bouger les pièces.
     // monJoueurId sert seulement à l'affichage : il n'est jamais envoyé au serveur.
-    const jeSuisBlanc = Number(monJoueurId) === Number(joueurBlancId);
+    const jeSuisBlanc = !estSpectateur && monJoueurId != null && Number(monJoueurId) === Number(joueurBlancId);
     const maCouleur = jeSuisBlanc ? "w" : "b";
-    const monTourReel = game.turn() === maCouleur;
+    const monTourReel = !estSpectateur && game.turn() === maCouleur;
 
-    
+
     const loginAdv = jeSuisBlanc ? joueurNoirLogin : joueurBlancLogin;
-    
+
     const advEnLigne = jeSuisBlanc ? blackOnline : whiteOnline;
-    
+
     const eloAdv = jeSuisBlanc ? eloNoir : eloBlanc;
 
     useEffect(() => {
@@ -62,18 +62,19 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
 
     // Met à jour le nombre de points affichés pour l'animation de l'attente de l'adversaire
     useEffect(() => {
-        if (monTourReel || game.isGameOver()) return undefined;
+        if (estSpectateur || monTourReel || game.isGameOver()) return undefined;
 
         const intervalle = setInterval(() => {
             setNombrePoints((points) => points === 3 ? 1 : points + 1);
         }, 500);
 
         return () => clearInterval(intervalle);
-    }, [monTourReel, game]);
+    }, [estSpectateur, monTourReel, game]);
 
     // Gestion du déplacement via react-chessboard et chess.js
     function onDrop(sourceSquare, targetSquare) {
         const current = new Chess(game.fen());
+        if (estSpectateur) return false;
         if (!monTourReel || current.turn() !== maCouleur || game.isGameOver()) return false;
 
         const piece = current.get(sourceSquare);
@@ -115,6 +116,10 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
         if (game.isCheckmate()) return "Échec et mat !";
         if (game.isDraw()) return "Match nul !";
         if (game.isStalemate()) return "Pat ! (Match nul)";
+        if (estSpectateur) {
+            const tourTexte = game.turn() === "w" ? "Blancs" : "Noirs";
+            return `Mode spectateur — Tour des ${tourTexte}`;
+        }
 
         return monTourReel
             ? "À vous de jouer!"
@@ -127,6 +132,11 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                 <h1 className="title has-text-centered has-text-white">
                     {getTitreMessage()}
                 </h1>
+                <div className="mb-3">
+                    <span className="tag is-dark has-text-white is-medium">
+                        Spectateurs : <strong className="has-text-white ml-1">{nbSpectateurs}</strong>
+                    </span>
+                </div>
                 {erreurSauvegarde && (
                     <p className="has-text-danger-light mb-4" role="alert">
                         Erreur lors de l'enregistrement : {erreurSauvegarde}
@@ -135,15 +145,25 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
 
                 {/* --- AFFICHAGE PERMANENT DES PSEUDOS ET DES PASTILLES DE PRÉSENCE --- */}
                 <div className="has-text-white mb-4">
-                    <p className="is-flex is-align-items-center is-justify-content-center">
-                        <Pastille enLigne={!!advEnLigne} />
-                        <span>Adversaire : <strong>{loginAdv ?? adversaire}</strong></span>
-                        {eloAdv && <span className="tag is-dark ml-2">Elo : {eloAdv}</span>}
-                    </p>
-
-                    
+                    {estSpectateur ? (
+                        <div className="is-flex is-justify-content-center is-flex-wrap-wrap" style={{ gap: "1.5rem" }}>
+                            <p className="is-flex is-align-items-center">
+                                <Pastille enLigne={!!whiteOnline} />
+                                <span>Blancs : <strong>{joueurBlancLogin || "En attente"}</strong></span>
+                            </p>
+                            <p className="is-flex is-align-items-center">
+                                <Pastille enLigne={!!blackOnline} />
+                                <span>Noirs : <strong>{joueurNoirLogin || "En attente"}</strong></span>
+                            </p>
+                        </div>
+                    ) : (
+                        <p className="is-flex is-align-items-center is-justify-content-center">
+                            <Pastille enLigne={!!advEnLigne} />
+                            <span>Adversaire : <strong>{loginAdv ?? adversaire}</strong></span>
+                            {eloAdv && <span className="tag is-dark ml-2">Elo : {eloAdv}</span>}
+                        </p>
+                    )}
                 </div>
-
                 {/* --- MESSAGE DE FIN DE PARTIE SI NÉCESSAIRE --- */}
                 {(partieQuittee || game.isGameOver()) && (
                     <p className="has-text-white mb-4">
@@ -168,7 +188,7 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                             <Chessboard
                                 position={game.fen()}
                                 onPieceDrop={onDrop}
-                                arePiecesDraggable={monTourReel && !game.isGameOver()}
+                                arePiecesDraggable={!estSpectateur && monTourReel && !game.isGameOver()}
                             />
                         </div>
                     </div>

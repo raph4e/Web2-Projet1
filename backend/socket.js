@@ -7,6 +7,7 @@ import { scoreBlancDepuisFen } from "./repository/outils.js";
 /* Calcule l'etat de la partie + presense en ligne des joueurs  */
 
 async function getGameState(code,ioInstance) {
+    const roomCode = String(code).toUpperCase();
     const game = await findGame(code.toUpperCase());
     if (!game) {
         return null;
@@ -15,12 +16,17 @@ async function getGameState(code,ioInstance) {
     const sockets = await ioInstance.in(code).fetchSockets();
     let whiteOnline = false;
     let blackOnline = false;
+    let nbSpectateurs = 0;
 
     for (const s of sockets) {
         // L'identité vient du cookie de session (socket.data.account), jamais du client
         const playerId = Number(s.data.account?.id);
-        if (playerId === Number(game.joueur_blanc_id)) whiteOnline = true;
-        if (playerId === Number(game.joueur_noir_id)) blackOnline = true;
+        const isWhite = Boolean(playerId) && playerId === Number(game.joueur_blanc_id);
+        const isBlack = Boolean(playerId) && playerId === Number(game.joueur_noir_id);
+
+        if (isWhite) whiteOnline = true;
+        if (isBlack) blackOnline = true;
+        if (!isWhite && !isBlack) nbSpectateurs++;
     }
     return {
         id: game.id,
@@ -33,6 +39,7 @@ async function getGameState(code,ioInstance) {
         joueur_noir_login: game.joueur_noir_login,
         whiteOnline,
         blackOnline,
+        nbSpectateurs,
     };
 }
 
@@ -88,6 +95,7 @@ export function initSocket(server) {
 
             // Diffuse l'état complet à tout le monde dans le salon d'un seul coup
             io.to(roomCode).emit("partie:etat", state);
+            io.to(roomCode).emit("partie:spectateurs", { nbSpectateurs: state.nbSpectateurs });
         });
 
         socket.on("coup:joue", async ({ code, from, to, promotion = "q" }) => {
@@ -219,11 +227,60 @@ export function initSocket(server) {
                         const state = await getGameState(roomCode, io);
                         if (state) {
                             io.to(roomCode).emit("partie:etat", state);
+                            io.to(roomCode).emit("partie:spectateurs", { nbSpectateurs: state.nbSpectateurs });
                         }
                     }, 100);
                 } catch (err) {
                     console.error("Erreur lors de la déconnexion:", err);
                 }
+            }
+        });
+        socket.on("partie:observer", async ({ code }) => {
+            if (!code) return;
+            const roomCode = String(code).toUpperCase();
+
+            // Si le socket observait déjà une autre partie, on quitte l'ancienne room d'abord
+            if (socket.data.code && socket.data.code !== roomCode) {
+                const previousCode = socket.data.code;
+                socket.leave(previousCode);
+                const prevState = await getGameState(previousCode, io);
+                if (prevState) {
+                    io.to(previousCode).emit("partie:spectateurs", {
+                        nbSpectateurs: prevState.nbSpectateurs,
+                    });
+                }
+            }
+
+            socket.join(roomCode);
+            socket.data.code = roomCode;
+
+            const state = await getGameState(roomCode, io);
+            if (!state) {
+                socket.emit("partie:erreur", { message: "Partie introuvable." });
+                return;
+            }
+
+            // Envoie l'état actuel au spectateur qui vient d'arriver et met à jour le compteur pour toute la room
+            socket.emit("partie:etat", state);
+            io.to(roomCode).emit("partie:spectateurs", {
+                nbSpectateurs: state.nbSpectateurs,
+            });
+        });
+
+        socket.on("partie:quitter_observation", async ({ code }) => {
+            const targetCode = String(code || socket.data.code || "").toUpperCase();
+            if (!targetCode) return;
+
+            socket.leave(targetCode);
+            if (socket.data.code === targetCode) {
+                socket.data.code = null;
+            }
+
+            const state = await getGameState(targetCode, io);
+            if (state) {
+                io.to(targetCode).emit("partie:spectateurs", {
+                    nbSpectateurs: state.nbSpectateurs,
+                });
             }
         });
     });

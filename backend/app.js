@@ -9,6 +9,7 @@ import {
     joinGame,
     leaveGame,
     updatePlayersElo,
+    findActiveGames,
 } from "./repository/parties.js";
 import { FEN_DEPART, scoreBlancDepuisFen } from "./repository/outils.js";
 import { requireAccount } from "./authorization.js";
@@ -161,3 +162,12 @@ app.post("/api/parties/:code/rejoindre", requireAccount, async (req, res) => {
     }
 });
 
+// Route pour récupérer les parties en cours (accessible aux spectateurs / invités)
+app.get("/api/parties", async (req, res) => {
+    try {
+        const parties = await findActiveGames(); // ou ta fonction dans ./repository/parties.js
+        res.json(parties);
+    } catch (err) {
+        res.status(500).json({ erreur: err.message });
+    }
+});
