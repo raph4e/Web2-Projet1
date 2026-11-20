@@ -1,4 +1,4 @@
-function Connexion({ _onConnexion }) {
+function Connexion({ _onConnexion, onContinuerInvite }) {
     const seConnecterAvecGithub = () => {
         window.location.href = "http://localhost:3000/api/auth/github";
     };
@@ -20,8 +20,18 @@ function Connexion({ _onConnexion }) {
                     >
                         Se connecter avec GitHub
                     </button>
+                    {onContinuerInvite && (
+                        <button
+                            type="button"
+                            className="button is-light is-fullwidth mt-3"
+                            onClick={onContinuerInvite}
+                        >
+                            Continuer en tant qu'invité
+                        </button>
+                    )}
                 </div>
             </div>
+            
         </div>
 
     );

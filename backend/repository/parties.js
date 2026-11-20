@@ -267,3 +267,30 @@ export async function joinGame(code, playerId) {
 
     return loadGame(code, playerId);
 }
+
+//inver trouver les paties active
+export async function findActiveGames() {
+  const { rows } = await db.query(`
+    SELECT
+      parties.id,
+      parties.code,
+      parties.statut,
+      parties.joueur_blanc_id,
+      parties.joueur_noir_id,
+      blanc.login AS joueur_blanc_login,
+      noir.login AS joueur_noir_login,
+      dernier_coup."FEN" AS "FEN"
+    FROM parties
+    LEFT JOIN joueurs AS blanc ON blanc.id = parties.joueur_blanc_id
+    LEFT JOIN joueurs AS noir ON noir.id = parties.joueur_noir_id
+    LEFT JOIN (
+      SELECT partie_id, MAX(id) AS max_id
+      FROM coups
+      GROUP BY partie_id
+    ) AS dc ON dc.partie_id = parties.id
+    LEFT JOIN coups AS dernier_coup ON dernier_coup.id = dc.max_id
+    WHERE parties.statut = 'en_cours'
+    ORDER BY parties.id DESC
+  `);
+  return rows;
+}
