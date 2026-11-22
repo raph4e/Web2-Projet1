@@ -5,7 +5,7 @@ import JoindrePartie from "./JoindrePartie";
 import Echiquier from "./Echiquier";
 import AttentePartie from "./AttentePartie";
 import HistoriqueParties from "./HistoriqueParties";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { Chess } from "chess.js";
 import TableSpectateur from "./TableSpectateur";
@@ -39,16 +39,41 @@ function App() {
     //corection de quitter partie 
     const [partieEnCours, setPartieEnCours] = useState(null);//ajout
 
+
+
+
     const socketRef = useRef(null);
 
     const codePartieRef = useRef(codePartie);
     const partieEnCoursRef = useRef(partieEnCours);
+    const dernierCodePartieRef = useRef(null);
+
+
+
+    const actualiserCompte = useCallback(async () => {
+        try {
+            const compteResponse = await fetch("http://localhost:3000/api/me", {
+                credentials: "include",
+                cache: "no-store",
+            });
+            if (!compteResponse.ok) {
+                throw new Error("La partie est terminée, mais le classement n’a pas pu être actualisé.");
+            }
+            const dataCompte = await compteResponse.json();
+            setCompte(dataCompte);
+            setErreurSauvegarde(null);
+        } catch (error) {
+            setErreurSauvegarde(error.message);
+        }
+    }, []);
 
 
     useEffect(() => {
         codePartieRef.current = codePartie;
+        if (codePartie) {
+            dernierCodePartieRef.current = codePartie;
+        }
     }, [codePartie]);
-
     useEffect(() => {
         partieEnCoursRef.current = partieEnCours;
     }, [partieEnCours]);
@@ -99,6 +124,7 @@ function App() {
         };
 
         currentSocket.on("partie:etat", handlePartieEtat);
+
 
         const handlePartieQuittee = ({ code, message }) => {
             const codeEvt = String(code || "").toUpperCase();
@@ -270,9 +296,11 @@ function App() {
             const codeEvt = String(code || "").toUpperCase();
             const codeActif = String(codePartieRef.current || "").toUpperCase();
             const codeEnCours = String(partieEnCoursRef.current?.code || "").toUpperCase();
+            const dernierCode = String(dernierCodePartieRef.current || "").toUpperCase();
             const concerneMaPartie =
                 (codeActif && codeEvt === codeActif) ||
-                (codeEnCours && codeEvt === codeEnCours);
+                (codeEnCours && codeEvt === codeEnCours) ||
+                (dernierCode && codeEvt === dernierCode);
 
             if (!concerneMaPartie) return;
 
@@ -296,7 +324,8 @@ function App() {
                 if (!compteResponse.ok) {
                     throw new Error("La partie est terminée, mais le classement n’a pas pu être actualisé.");
                 }
-                setCompte(await compteResponse.json());
+                const dataCompte = await compteResponse.json();
+                setCompte(dataCompte);
                 setErreurSauvegarde(null);
             } catch (error) {
                 setErreurSauvegarde(error.message);
@@ -477,6 +506,7 @@ function App() {
                             joueurNoirLogin={partie?.joueur_noir_login}
                             estSpectateur={estSpectateur}
                             nbSpectateurs={nbSpectateurs}
+                            onPartieTerminee={actualiserCompte}
                         />
                     ) : page === "joindre" ? (
                         <JoindrePartie onRejoint={(code, partie) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect,useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
@@ -19,7 +19,7 @@ function Pastille({ enLigne, taille = 12 }) {
     );
 }
 
-function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId, joueurBlancLogin, joueurNoirLogin, whiteOnline, blackOnline, estSpectateur = false, nbSpectateurs = 0, }) {
+function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId, joueurBlancLogin, joueurNoirLogin, whiteOnline, blackOnline, estSpectateur = false, nbSpectateurs = 0,onPartieTerminee, }) {
     const [nombrePoints, setNombrePoints] = useState(1);
     const [game, setGame] = useState(() => new Chess(positionInitiale));
     const [attenteReconnexion, setAttenteReconnexion] = useState(null);
@@ -119,6 +119,18 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
 
         return () => clearInterval(intervalle);
     }, [estSpectateur, monTourReel, game]);
+    // Detecte lorsque partie terminer 
+    const partieTermineeNotifieeRef = useRef(false);
+
+    useEffect(() => {
+        partieTermineeNotifieeRef.current = false;
+    }, [partieCode, positionInitiale]);
+
+    useEffect(() => {
+        if (estSpectateur || !game.isGameOver() || partieTermineeNotifieeRef.current) return undefined;
+        partieTermineeNotifieeRef.current = true;
+        onPartieTerminee?.();
+    }, [estSpectateur, game, onPartieTerminee]);
 
     // Gestion du déplacement via react-chessboard et chess.js
     function onDrop(sourceSquare, targetSquare) {
