@@ -36,8 +36,22 @@ function App() {
     const [partiesActives, setPartiesActives] = useState([]);
     const [chargementParties, setChargementParties] = useState(false);
     const [nbSpectateurs, setNbSpectateurs] = useState(0);
+    //corection de quitter partie 
+    const [partieEnCours, setPartieEnCours] = useState(null);//ajout
 
     const socketRef = useRef(null);
+
+    const codePartieRef = useRef(codePartie);
+    const partieEnCoursRef = useRef(partieEnCours);
+
+
+    useEffect(() => {
+        codePartieRef.current = codePartie;
+    }, [codePartie]);
+
+    useEffect(() => {
+        partieEnCoursRef.current = partieEnCours;
+    }, [partieEnCours]);
 
 
     // Initialisation ou mise à jour de la connexion socket avec le jeton d'authentification
@@ -46,7 +60,6 @@ function App() {
             socketRef.current.disconnect();
         }
 
-        // On passe le token dans l'objet 'auth' de Socket.io (Jalon 1)
         socketRef.current = io("http://localhost:3000", {
             withCredentials: true,
             auth: token ? { token } : {}
@@ -61,14 +74,12 @@ function App() {
                 joueur_noir_id: partie.joueur_noir_id ?? partie.joueurNoirId,
                 joueur_blanc_login: partie.joueur_blanc_login ?? partie.joueurBlancLogin,
                 joueur_noir_login: partie.joueur_noir_login ?? partie.joueurNoirLogin,
-                // Récupération des statuts en ligne calculés par le serveur (Jalon 2)
                 whiteOnline: partie.whiteOnline,
                 blackOnline: partie.blackOnline,
             };
 
             const moi = Number(compte?.id);
             const jeSuisBlanc = Number(partieNormalisee.joueur_blanc_id) === moi;
-            //inviter ajoute
             const joueur1 = partieNormalisee.joueur_blanc_login || "Blancs";
             const joueur2 = partieNormalisee.joueur_noir_login || "Noirs";
 
@@ -82,6 +93,7 @@ function App() {
             );
 
             if (partieNormalisee.statut === "en_cours") {
+                setPartieEnCours((prev) => prev || { code: partieNormalisee.code, statut: "en_cours" });
                 setPage("echiquier");
             }
         };
@@ -89,17 +101,27 @@ function App() {
         currentSocket.on("partie:etat", handlePartieEtat);
 
         const handlePartieQuittee = ({ code, message }) => {
-            if (!codePartie || code !== codePartie) return;
+            const codeEvt = String(code || "").toUpperCase();
+            const codeActif = String(codePartieRef.current || "").toUpperCase();
+            const codeEnCours = String(partieEnCoursRef.current?.code || "").toUpperCase();
 
-            setPartieQuittee(message);
-            setCodePartie(null);
-            setPartieId(null);
-            setPartie(null);
-            setAdversaire(null);
-            setPositionInitiale(new Chess().fen());
-            
-            setNbSpectateurs(0);
-            setPage(modeInvite ? "spectateur_liste" : "choix");
+            const estMaPartie =
+                (codeActif && codeEvt === codeActif) ||
+                (codeEnCours && codeEvt === codeEnCours);
+            if (!estMaPartie) return;
+
+            setPartieEnCours(null);
+
+            if (codeActif && codeEvt === codeActif) {
+                setPartieQuittee(message);
+                setCodePartie(null);
+                setPartieId(null);
+                setPartie(null);
+                setAdversaire(null);
+                setPositionInitiale(new Chess().fen());
+                setNbSpectateurs(0);
+                setPage(modeInvite ? "spectateur_liste" : "choix");
+            }
         };
 
         currentSocket.on("partie:quitte", handlePartieQuittee);
@@ -114,14 +136,35 @@ function App() {
             currentSocket.off("partie:quitte", handlePartieQuittee);
             currentSocket.off("partie:spectateurs", handleSpectateurs);
         };
-   }, [token]);
+    }, [token, compte?.id, estSpectateur, modeInvite]);
 
     // Vérifie si l'utilisateur est déjà connecté en récupérant les informations de son compte depuis le backend
     useEffect(() => {
         fetch("http://localhost:3000/api/me", { credentials: "include" })
             .then(async (response) => {
                 if (!response.ok) return;
-                setCompte(await response.json());
+                const dataCompte = await response.json();
+                setCompte(dataCompte);
+
+
+                // Retrouve automatiquement une partie active après un rechargement
+                if (dataCompte?.id) {
+                    fetch(`http://localhost:3000/api/joueurs/${dataCompte.id}/parties`, {
+                        credentials: "include",
+                    })
+                        .then(async (res) => {
+                            if (!res.ok) return;
+                            const parties = await res.json();
+                            const active = parties.find((p) => p.statut === "en_cours");
+                            setPartieEnCours(active);
+                            if (active) {
+                                setEstSpectateur(false);
+                                setCodePartie(active.code);
+                                setPage("echiquier");
+                            }
+                        })
+                        .catch((err) => console.error("Erreur restauration partie:", err));
+                }
             })
             .catch(() => setCompte(null));
     }, []);
@@ -214,6 +257,7 @@ function App() {
             setPartieQuittee(null);
             setErreurSauvegarde(null);
             setNbSpectateurs(0);
+            setPartieEnCours(null);//ajout
         }
     };
 
@@ -221,10 +265,29 @@ function App() {
     // Quand il annonce "partie:terminee", on recharge seulement le profil pour afficher le nouvel Elo.
     useEffect(() => {
         const currentSocket = socketRef.current;
-        if (!codePartie || !currentSocket|| estSpectateur) return undefined;
-
+        if (!compte?.id || !currentSocket || estSpectateur) return undefined;
         const handlePartieTerminee = async ({ code }) => {
-            if (code !== codePartie) return;
+            const codeEvt = String(code || "").toUpperCase();
+            const codeActif = String(codePartieRef.current || "").toUpperCase();
+            const codeEnCours = String(partieEnCoursRef.current?.code || "").toUpperCase();
+            const concerneMaPartie =
+                (codeActif && codeEvt === codeActif) ||
+                (codeEnCours && codeEvt === codeEnCours);
+
+            if (!concerneMaPartie) return;
+
+            setPartieEnCours(null);//ajout
+
+            if (codeActif && codeEvt === codeActif) {
+                setCodePartie(null);
+                setPartieId(null);
+                setPartie(null);
+                setAdversaire(null);
+                setPositionInitiale(new Chess().fen());
+                setNbSpectateurs(0);
+                setPage("choix");
+            }
+
             try {
                 const compteResponse = await fetch("http://localhost:3000/api/me", {
                     credentials: "include",
@@ -244,8 +307,7 @@ function App() {
         return () => {
             currentSocket.off("partie:terminee", handlePartieTerminee);
         };
-    }, [codePartie, compte?.id, token,estSpectateur]);
-
+    }, [compte?.id, estSpectateur]);
     // Retourne à la page de choix de création ou de jonction de partie, en supprimant la partie si l'utilisateur était dans une partie en attente ou en cours.
     const retournerAuChoix = async () => {
         if (estSpectateur) {
@@ -263,11 +325,16 @@ function App() {
             setPage("spectateur_liste");
             return;
         }
-        if ((page === "attente" || page === "echiquier") && codePartie) {
+        if (page === "attente" && codePartie) {
             await fetch(`http://localhost:3000/api/parties/${codePartie}`, {
                 method: "DELETE",
                 credentials: "include",
             });
+        }
+        //ajout
+        if (page === "echiquier" && codePartie) {
+            setPartieEnCours((prev) => prev || { code: codePartie, statut: "en_cours" });
+            socketRef.current?.emit("partie:quitter_salon", { code: codePartie });
         }
         setCodePartie(null);
         setPartieId(null);
@@ -277,14 +344,22 @@ function App() {
         setPartieQuittee(null);
         setErreurSauvegarde(null);
         setPage("choix");
-        
+
+    };
+    // Rejoint une partie actuellement en cours depuis le menu principal
+    const handleRejoindrePartieEnCours = (partieActive) => {
+        if (!partieActive?.code) return;
+        setEstSpectateur(false);
+        setPartieQuittee(null);
+        setCodePartie(partieActive.code);
+        setPage("echiquier");
     };
 
     // Déconnecte l'utilisateur en appelant l'API de déconnexion du backend et réinitialise l'état de l'application.
     const seDeconnecter = async () => {
         if (estSpectateur && codePartie) {
-        socketRef.current?.emit("partie:quitter_observation", { code: codePartie });
-    }
+            socketRef.current?.emit("partie:quitter_observation", { code: codePartie });
+        }
         if (compte) {
             await fetch("http://localhost:3000/api/auth/logout", {
                 method: "POST",
@@ -301,6 +376,7 @@ function App() {
         setNbSpectateurs(0);
         setPartieQuittee(null);
         setErreurSauvegarde(null);
+        setPartieEnCours(null);//ajout
         setPage("choix");
     };
 
@@ -316,7 +392,7 @@ function App() {
         setCodePartie(code);
         setPartieQuittee(null);
         setPage("echiquier");
-        
+
     };
     useEffect(() => {
         const currentSocket = socketRef.current;
@@ -336,15 +412,25 @@ function App() {
             currentSocket.off("connect", rejoindreObservation);
         };
     }, [codePartie, estSpectateur, token]);
+    //ajout pour connecter a mes websocket 
     useEffect(() => {
-        if (!codePartie || !socketRef.current || estSpectateur) return undefined;
-        if (!compte?.id) return undefined;
+        const currentSocket = socketRef.current;
+        if (!codePartie || !currentSocket || estSpectateur || !compte?.id) return undefined;
 
-        socketRef.current.emit("partie:rejoindre", {
-            code: codePartie,
-        });
+        const rejoindre = () => {
+            currentSocket.emit("partie:rejoindre", { code: codePartie });
+        };
+
+        if (currentSocket.connected) {
+            rejoindre();
+        } else {
+            currentSocket.once("connect", rejoindre);
+        }
+
+        return () => {
+            currentSocket.off("connect", rejoindre);
+        };
     }, [codePartie, compte?.id, token, estSpectateur]);
-
     return (
         <section className="hero is-fullheight" style={{ backgroundColor: "#6b4f3a" }}>
             {compte ? (
@@ -413,6 +499,9 @@ function App() {
                                 setPage("joindre");
                             }}
                             onHistorique={() => setPage("historique")}
+                            //ajout
+                            onRejoindreEnCours={handleRejoindrePartieEnCours}
+                            partieEnCours={partieEnCours}
                             message={partieQuittee}
                         />
                     )}

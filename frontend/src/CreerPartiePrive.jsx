@@ -1,4 +1,4 @@
-function CreerPartiePrive({ onCreer, onJoindre, onHistorique, message }) {
+function CreerPartiePrive({ onCreer, onJoindre, onHistorique,onRejoindreEnCours,partieEnCours, message }) {
     return (
         <div className="hero-body">
             <div className="container is-flex is-justify-content-center">
@@ -12,25 +12,33 @@ function CreerPartiePrive({ onCreer, onJoindre, onHistorique, message }) {
                         </p>
                     )}
                     <div className="box has-text-centered">
-                    <h1 className="title">Choisir une option</h1>
-                    <button
-                        className="button is-dark is-fullwidth"
-                        onClick={onCreer}
-                    >
-                        Créer une partie privée
-                    </button>
-                    <button
-                        className="button is-dark is-fullwidth mt-4"
-                        onClick={onJoindre}
-                    >
-                        Joindre une partie
-                    </button>
-                    <button
-                        className="button is-light is-fullwidth mt-4"
-                        onClick={onHistorique}
-                    >
-                        Historique des parties
-                    </button>
+                        <h1 className="title">Choisir une option</h1>
+                        {partieEnCours && (
+                            <button
+                                className="button is-success is-fullwidth mb-4"
+                                onClick={() => onRejoindreEnCours?.(partieEnCours)}
+                            >
+                                Rejoindre la partie en cours ({partieEnCours.code})
+                            </button>
+                        )}
+                        <button
+                            className="button is-dark is-fullwidth"
+                            onClick={onCreer}
+                        >
+                            Créer une partie privée
+                        </button>
+                        <button
+                            className="button is-dark is-fullwidth mt-4"
+                            onClick={onJoindre}
+                        >
+                            Joindre une partie
+                        </button>
+                        <button
+                            className="button is-light is-fullwidth mt-4"
+                            onClick={onHistorique}
+                        >
+                            Historique des parties
+                        </button>
                     </div>
                 </div>
             </div>
