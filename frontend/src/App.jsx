@@ -50,6 +50,10 @@ function App() {
 
 
 
+
+   
+
+
     const actualiserCompte = useCallback(async () => {
         try {
             const compteResponse = await fetch("http://localhost:3000/api/me", {
@@ -77,6 +81,8 @@ function App() {
     useEffect(() => {
         partieEnCoursRef.current = partieEnCours;
     }, [partieEnCours]);
+
+   
 
 
     // Initialisation ou mise à jour de la connexion socket avec le jeton d'authentification
@@ -262,7 +268,7 @@ function App() {
         if (!codePartie) return;
 
         try {
-            if (!estSpectateur) {
+            if (!estSpectateur && partie?.statut !== "terminee" && !partieQuittee) {
                 const response = await fetch(`http://localhost:3000/api/parties/${codePartie}`, {
                     method: "DELETE",
                     credentials: "include",
@@ -271,7 +277,7 @@ function App() {
                 if (!response.ok && response.status !== 404) {
                     throw new Error("Impossible de quitter la partie.");
                 }
-            } else {
+            } else if (estSpectateur) {
                 socketRef.current?.emit("partie:quitter_observation", { code: codePartie });
             }
         } finally {
@@ -284,6 +290,7 @@ function App() {
             setErreurSauvegarde(null);
             setNbSpectateurs(0);
             setPartieEnCours(null);//ajout
+            setPage("choix");
         }
     };
 
@@ -327,6 +334,7 @@ function App() {
                 const dataCompte = await compteResponse.json();
                 setCompte(dataCompte);
                 setErreurSauvegarde(null);
+                
             } catch (error) {
                 setErreurSauvegarde(error.message);
             }
@@ -336,7 +344,7 @@ function App() {
         return () => {
             currentSocket.off("partie:terminee", handlePartieTerminee);
         };
-    }, [compte?.id, estSpectateur]);
+    }, [compte?.id, estSpectateur, ]);
     // Retourne à la page de choix de création ou de jonction de partie, en supprimant la partie si l'utilisateur était dans une partie en attente ou en cours.
     const retournerAuChoix = async () => {
         if (estSpectateur) {
@@ -467,8 +475,13 @@ function App() {
                     <header className="level p-4 mb-0" style={{ backgroundColor: "#6b4f3a" }}>
                         <div className="level-left">
                             {(page === "echiquier" || page === "joindre" || page === "attente" || page === "historique") && (
-                                <button className="button is-white" onClick={retournerAuChoix}>
-                                    {page === "echiquier" ? "Quitter la partie" : "Retour"}
+                                <button
+                                    className="button is-white"
+                                    onClick={page === "echiquier" && (partieQuittee || partie?.statut === "terminee") ? retournerAuChoix : (page === "echiquier" ? quitterPartie : retournerAuChoix)}
+                                >
+                                    {page === "echiquier"
+                                        ? (partieQuittee || partie?.statut === "terminee" ? "Retour au menu" : "Abandonner / Quitter")
+                                        : "Retour"}
                                 </button>
                             )}
                         </div>
