@@ -477,10 +477,10 @@ function App() {
                             {(page === "echiquier" || page === "joindre" || page === "attente" || page === "historique") && (
                                 <button
                                     className="button is-white"
-                                    onClick={page === "echiquier" && (partieQuittee || partie?.statut === "terminee") ? retournerAuChoix : (page === "echiquier" ? quitterPartie : retournerAuChoix)}
+                                    onClick={retournerAuChoix}
                                 >
                                     {page === "echiquier"
-                                        ? (partieQuittee || partie?.statut === "terminee" ? "Retour au menu" : "Abandonner / Quitter")
+                                        ? (partieQuittee || partie?.statut === "terminee" ? "Retour au menu" : "Quitter la salle")
                                         : "Retour"}
                                 </button>
                             )}
@@ -540,6 +540,7 @@ function App() {
                             onJoindre={() => {
                                 setPartieQuittee(null);
                                 setPage("joindre");
+                                
                             }}
                             onHistorique={() => setPage("historique")}
                             //ajout
