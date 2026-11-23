@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect,useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
@@ -19,9 +19,10 @@ function Pastille({ enLigne, taille = 12 }) {
     );
 }
 
-function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId, joueurBlancLogin, joueurNoirLogin, whiteOnline, blackOnline, estSpectateur = false, nbSpectateurs = 0, }) {
+function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, partieQuittee, erreurSauvegarde, partieCode, monJoueurId, joueurBlancId, joueurBlancLogin, joueurNoirLogin, whiteOnline, blackOnline, estSpectateur = false, nbSpectateurs = 0,onPartieTerminee, }) {
     const [nombrePoints, setNombrePoints] = useState(1);
     const [game, setGame] = useState(() => new Chess(positionInitiale));
+    const [attenteReconnexion, setAttenteReconnexion] = useState(null);
 
     // Logique pour permettre seulement au joueur à qui est le tour de bouger les pièces.
     // monJoueurId sert seulement à l'affichage : il n'est jamais envoyé au serveur.
@@ -51,14 +52,62 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
             alert(message);
         };
 
+        const handleAttente = ({ code, playerId, login, delaiSecondes = 60 }) => {
+            if (code !== partieCode) return;
+            // N'affiche l'alerte qu'aux autres joueurs / spectateurs
+            if (!estSpectateur && Number(playerId) === Number(monJoueurId)) return;
+
+            setAttenteReconnexion({
+                playerId: Number(playerId),
+                login: login || "Le joueur",
+                secondes: delaiSecondes,
+            });
+        };
+
+        const handleOk = ({ code, playerId }) => {
+            if (code !== partieCode) return;
+            setAttenteReconnexion((prev) => {
+                if (!prev) return null;
+                if (playerId && Number(prev.playerId) !== Number(playerId)) return prev;
+                return null;
+            });
+        };
+
+        const handleFinPartie = () => {
+            setAttenteReconnexion(null);
+        };
+
         socket.on("coup:annonce", handleCoupAnnonce);
         socket.on("coup:erreur", handleCoupErreur);
+        socket.on("partie:reconnexion_attente", handleAttente);
+        socket.on("partie:reconnexion_ok", handleOk);
+        socket.on("partie:quitte", handleFinPartie);
+        socket.on("partie:terminee", handleFinPartie);
 
         return () => {
             socket.off("coup:annonce", handleCoupAnnonce);
             socket.off("coup:erreur", handleCoupErreur);
+            socket.off("partie:reconnexion_attente", handleAttente);
+            socket.off("partie:reconnexion_ok", handleOk);
+            socket.off("partie:quitte", handleFinPartie);
+            socket.off("partie:terminee", handleFinPartie);
         };
-    }, [partieCode, socket]);
+    }, [partieCode, socket, monJoueurId, estSpectateur]);
+
+    // Décompte de seconde en seconde pour l'affichage visuel
+    useEffect(() => {
+        if (!attenteReconnexion) return undefined;
+
+        const intervalle = setInterval(() => {
+            setAttenteReconnexion((prev) => {
+                if (!prev) return null;
+                if (prev.secondes <= 1) return null;
+                return { ...prev, secondes: prev.secondes - 1 };
+            });
+        }, 1000);
+
+        return () => clearInterval(intervalle);
+    }, [attenteReconnexion]);
 
     // Met à jour le nombre de points affichés pour l'animation de l'attente de l'adversaire
     useEffect(() => {
@@ -70,6 +119,18 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
 
         return () => clearInterval(intervalle);
     }, [estSpectateur, monTourReel, game]);
+    // Detecte lorsque partie terminer 
+    const partieTermineeNotifieeRef = useRef(false);
+
+    useEffect(() => {
+        partieTermineeNotifieeRef.current = false;
+    }, [partieCode, positionInitiale]);
+
+    useEffect(() => {
+        if (estSpectateur || !game.isGameOver() || partieTermineeNotifieeRef.current) return undefined;
+        partieTermineeNotifieeRef.current = true;
+        onPartieTerminee?.();
+    }, [estSpectateur, game, onPartieTerminee]);
 
     // Gestion du déplacement via react-chessboard et chess.js
     function onDrop(sourceSquare, targetSquare) {
@@ -143,6 +204,13 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                     </p>
                 )}
 
+                {attenteReconnexion && !partieQuittee && !game.isGameOver() && (
+                    <div className="notification is-warning mb-4 mx-auto" style={{ maxWidth: "520px" }} role="status">
+                        Le joueur <strong>{attenteReconnexion.login}</strong> est déconnecté, veuillez patienter{" "}
+                        <strong>{attenteReconnexion.secondes}</strong> de seconde sinon il sera déclaré forfait.
+                    </div>
+                )}
+
                 {/* --- AFFICHAGE PERMANENT DES PSEUDOS ET DES PASTILLES DE PRÉSENCE --- */}
                 <div className="has-text-white mb-4">
                     {estSpectateur ? (
@@ -187,6 +255,7 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                         <div className="box p-3 has-background-light">
                             <Chessboard
                                 position={game.fen()}
+                                boardOrientation={jeSuisBlanc ? "white":"black"}
                                 onPieceDrop={onDrop}
                                 arePiecesDraggable={!estSpectateur && monTourReel && !game.isGameOver()}
                             />

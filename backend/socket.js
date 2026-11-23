@@ -6,7 +6,7 @@ import { scoreBlancDepuisFen } from "./repository/outils.js";
 
 /* Calcule l'etat de la partie + presense en ligne des joueurs  */
 
-async function getGameState(code,ioInstance) {
+async function getGameState(code, ioInstance) {
     const roomCode = String(code).toUpperCase();
     const game = await findGame(code.toUpperCase());
     if (!game) {
@@ -44,11 +44,12 @@ async function getGameState(code,ioInstance) {
 }
 
 export function initSocket(server) {
+
     if (!server) {
         return {
-            on: () => {},
-            to: () => ({ emit: () => {} }),
-            emit: () => {},
+            on: () => { },
+            to: () => ({ emit: () => { } }),
+            emit: () => { },
         };
     }
 
@@ -58,6 +59,9 @@ export function initSocket(server) {
             credentials: true,
         },
     });
+
+    const reconnexionTimers = new Map();
+    const DELAI_RECONNEXION_MS = 60_000;
 
     // Le portier : lit le cookie de session une seule fois, à l'ouverture de la connexion.
     // Pas de compte = spectateur (account = null) : il peut regarder, mais pas jouer.
@@ -79,6 +83,19 @@ export function initSocket(server) {
 
             socket.join(roomCode);
             socket.data.code = roomCode;
+            //ajout  60 s
+            const playerId = Number(socket.data.account?.id);
+            if (playerId) {
+                const timerKey = `${roomCode}:${playerId}`;
+                if (reconnexionTimers.has(timerKey)) {
+                    clearTimeout(reconnexionTimers.get(timerKey));
+                    reconnexionTimers.delete(timerKey);
+                    io.to(roomCode).emit("partie:reconnexion_ok", {
+                        code: roomCode,
+                        playerId,
+                    });
+                }
+            }
 
             const game = await findGame(roomCode);
             if (!game) {
@@ -199,6 +216,12 @@ export function initSocket(server) {
                     socket.emit("partie:erreur", { message: "Les spectateurs ne peuvent pas abandonner." });
                     return;
                 }
+                // enlever le timeKey lorsque la partie est abandonner         
+                const timerKey = `${roomCode}:${account.id}`;
+                if (reconnexionTimers.has(timerKey)) {
+                    clearTimeout(reconnexionTimers.get(timerKey));
+                    reconnexionTimers.delete(timerKey);
+                }
 
                 // 2. Quitter la partie (refusé si le joueur ne fait pas partie de cette partie)
                 const left = await leaveGame(roomCode, account.id);
@@ -230,8 +253,57 @@ export function initSocket(server) {
                             io.to(roomCode).emit("partie:spectateurs", { nbSpectateurs: state.nbSpectateurs });
                         }
                     }, 100);
+                    const account = socket.data.account;
+                    if (!account) return;
+
+                    const game = await findGame(roomCode);
+                    if (!game || game.statut !== "en_cours") return;
+
+                    const playerId = Number(account.id);
+                    const estJoueur =
+                        playerId === Number(game.joueur_blanc_id) ||
+                        playerId === Number(game.joueur_noir_id);
+                    if (!estJoueur) return;
+
+                    const timerKey = `${roomCode}:${playerId}`;
+                    if (reconnexionTimers.has(timerKey)) {
+                        clearTimeout(reconnexionTimers.get(timerKey));
+                    }
+                    // ajout du timer lorsqu'en attente
+                    io.to(roomCode).emit("partie:reconnexion_attente", {
+                        code: roomCode,
+                        playerId,
+                        login: account.login,
+                        delaiSecondes: 60,
+                    });
+                    const timer = setTimeout(async () => {
+                        reconnexionTimers.delete(timerKey);
+                        try {
+                            const currentGame = await findGame(roomCode);
+                            if (!currentGame || currentGame.statut !== "en_cours") return;
+
+                            // Si le joueur ne s'est toujours pas reconnecté dans la room
+                            const sockets = await io.in(roomCode).fetchSockets();
+                            const estToujoursLa = sockets.some(
+                                (s) => Number(s.data.account?.id) === playerId
+                            );
+                            if (estToujoursLa) return;
+
+                            const left = await leaveGame(roomCode, playerId);
+                            if (left) {
+                                                                io.to(roomCode).emit("partie:quitte", {
+                                    code: roomCode,
+                                    message                                        : `${account.login} ne s'est pas reconnecté dans les 60 secondes.`,
+                                });
+                            }
+                        } catch (err) {
+                            console.error("Erreur expiration 60s reconnexion:", err);
+                        }
+                    }, DELAI_RECONNEXION_MS);
+
+                    reconnexionTimers.set(timerKey, timer);
                 } catch (err) {
-                    console.error("Erreur lors de la déconnexion:", err);
+                    console.error("Erreur disconnect:", err);
                 }
             }
         });
@@ -281,6 +353,77 @@ export function initSocket(server) {
                 io.to(targetCode).emit("partie:spectateurs", {
                     nbSpectateurs: state.nbSpectateurs,
                 });
+            }
+        });
+        socket.on("partie:quitter_salon", async ({ code }) => {
+            const roomCode = String(code || socket.data.code || "").toUpperCase();
+            if (!roomCode) return;
+
+            try {
+                socket.leave(roomCode);
+                if (socket.data.code === roomCode) {
+                    socket.data.code = null;
+                }
+
+                setTimeout(async () => {
+                    const state = await getGameState(roomCode, io);
+                    if (state) {
+                        io.to(roomCode).emit("partie:etat", state);
+                        io.to(roomCode).emit("partie:spectateurs", { nbSpectateurs: state.nbSpectateurs });
+                    }
+                }, 100);
+
+                const account = socket.data.account;
+                if (!account) return;
+
+                const game = await findGame(roomCode);
+                if (!game || game.statut !== "en_cours") return;
+
+                const playerId = Number(account.id);
+                const estJoueur =
+                    playerId === Number(game.joueur_blanc_id) ||
+                    playerId === Number(game.joueur_noir_id);
+                if (!estJoueur) return;
+
+                const timerKey = `${roomCode}:${playerId}`;
+                if (reconnexionTimers.has(timerKey)) {
+                    clearTimeout(reconnexionTimers.get(timerKey));
+                }
+
+                io.to(roomCode).emit("partie:reconnexion_attente", {
+                    code: roomCode,
+                    playerId,
+                    login: account.login,
+                    delaiSecondes: 60,
+                });
+
+                const timer = setTimeout(async () => {
+                    reconnexionTimers.delete(timerKey);
+                    try {
+                        const currentGame = await findGame(roomCode);
+                        if (!currentGame || currentGame.statut !== "en_cours") return;
+
+                        const sockets = await io.in(roomCode).fetchSockets();
+                        const estToujoursLa = sockets.some(
+                            (s) => Number(s.data.account?.id) === playerId
+                        );
+                        if (estToujoursLa) return;
+
+                        const left = await leaveGame(roomCode, playerId);
+                        if (left) {
+                            io.to(roomCode).emit("partie:quitte", {
+                                code: roomCode,
+                                message: `${account.login} ne s'est pas reconnecté dans les 60 secondes.`,
+                            });
+                        }
+                    } catch (err) {
+                        console.error("Erreur expiration 60s reconnexion:", err);
+                    }
+                }, DELAI_RECONNEXION_MS);
+
+                reconnexionTimers.set(timerKey, timer);
+            } catch (err) {
+                console.error("Erreur partie:quitter_salon:", err);
             }
         });
     });
