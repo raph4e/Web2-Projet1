@@ -255,6 +255,7 @@ function Echiquier({ socket, positionInitiale, adversaire, eloBlanc, eloNoir, pa
                         <div className="box p-3 has-background-light">
                             <Chessboard
                                 position={game.fen()}
+                                boardOrientation={jeSuisBlanc ? "white":"black"}
                                 onPieceDrop={onDrop}
                                 arePiecesDraggable={!estSpectateur && monTourReel && !game.isGameOver()}
                             />
