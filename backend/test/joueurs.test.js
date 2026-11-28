@@ -55,6 +55,7 @@ test('findGamesByPlayer renvoie les parties où le joueur est blanc ou noir', as
   assert.deepEqual(new Set(parties.map((partie) => partie.code)), new Set([partieBlanc, partieNoir]));
 });
 
+// Vérifie le status de la partie est en cour seulement lorsque les deux joueurs on rejoind la partie
 test('une partie ne commence que lorsque le deuxieme joueur la rejoint', async () => {
   const blanc = await findOrCreateAccount({ githubId: 8, login: 'blanc', name: null, avatarUrl: null });
   const noir = await findOrCreateAccount({ githubId: 9, login: 'noir', name: null, avatarUrl: null });

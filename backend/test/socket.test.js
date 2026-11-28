@@ -148,3 +148,63 @@ test('un spectateur peut regarder la partie mais ne peut pas jouer', async (t) =
   assert.equal(erreur.message, 'Les spectateurs ne peuvent pas jouer.');
   assert.equal(partieApresTentative.FEN, coup.fen);
 });
+
+// Vérifie qu'un compte authentifié qui observe une partie sans y jouer ne peut pas modifier sa position.
+test('un spectateur authentifié qui ne participe pas à la partie ne peut pas jouer', async (t) => {
+  const blanc = await findOrCreateAccount({ githubId: 24, login: 'blanc', name: null, avatarUrl: null });
+  const noir = await findOrCreateAccount({ githubId: 25, login: 'noir', name: null, avatarUrl: null });
+  const spectateur = await findOrCreateAccount({ githubId: 26, login: 'spectateur', name: null, avatarUrl: null });
+  const code = await createGame(blanc.id);
+  await joinGame(code, noir.id);
+
+  const { connecter } = await demarrerServeurSocket(t, code);
+  const socketSpectateur = await connecter(spectateur.id);
+
+  const etatInitialSpectateur = attendreEvenement(socketSpectateur, 'partie:etat');
+  socketSpectateur.emit('partie:observer', { code });
+  const etatInitial = await etatInitialSpectateur;
+  const partieInitiale = await findGame(code);
+  assert.equal(etatInitial.statut, 'en_cours');
+
+  // Le coup est légal pour les blancs, mais le compte spectateur n'est membre d'aucune équipe.
+  const erreurRecue = attendreEvenement(socketSpectateur, 'coup:erreur');
+  socketSpectateur.emit('coup:joue', { code, from: 'e2', to: 'e4' });
+  const erreur = await erreurRecue;
+  const partieApresTentative = await findGame(code);
+
+  assert.equal(erreur.message, 'Tu ne fais pas partie de cette partie.');
+  assert.equal(partieApresTentative.FEN, partieInitiale.FEN);
+});
+
+// Vérifie que l'adversaire reçoit la présence mise à jour après la déconnexion d'un joueur.
+test('un joueur qui se déconnecte est annoncé hors ligne à son adversaire', async (t) => {
+  const blanc = await findOrCreateAccount({ githubId: 27, login: 'blanc', name: null, avatarUrl: null });
+  const noir = await findOrCreateAccount({ githubId: 28, login: 'noir', name: null, avatarUrl: null });
+  const code = await createGame(blanc.id);
+  await joinGame(code, noir.id);
+
+  const { connecter } = await demarrerServeurSocket(t, code);
+  const [socketBlanc, socketNoir] = await Promise.all([connecter(blanc.id), connecter(noir.id)]);
+
+  const blancDansLaPartie = attendreEvenement(socketBlanc, 'partie:etat');
+  socketBlanc.emit('partie:rejoindre', { code });
+  await blancDansLaPartie;
+
+  const noirDansLaPartie = attendreEvenement(socketNoir, 'partie:etat');
+  socketNoir.emit('partie:rejoindre', { code });
+  await noirDansLaPartie;
+
+  const etatApresDeconnexion = attendreEvenement(socketNoir, 'partie:etat');
+  socketBlanc.disconnect();
+  const etat = await etatApresDeconnexion;
+
+  assert.equal(etat.whiteOnline, false);
+  assert.equal(etat.blackOnline, true);
+
+  // Reconnecte le joueur pour annuler le délai de reconnexion de 60 secondes du serveur.
+  const reconnexionConfirmee = attendreEvenement(socketNoir, 'partie:reconnexion_ok');
+  const socketBlancReconnecte = await connecter(blanc.id);
+  const etatApresReconnexion = attendreEvenement(socketBlancReconnecte, 'partie:etat');
+  socketBlancReconnecte.emit('partie:rejoindre', { code });
+  await Promise.all([reconnexionConfirmee, etatApresReconnexion]);
+});
