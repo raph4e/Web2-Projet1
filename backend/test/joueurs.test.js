@@ -1,7 +1,7 @@
 import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { findAccount, findAllAccounts, findGamesByPlayer, findOrCreateAccount } from '../repository/joueurs.js';
-import { createGame, joinGame } from '../repository/parties.js';
+import { createGame, findGame, joinGame } from '../repository/parties.js';
 import db from '../db.js';
 
 // Ces tests utilisent une base vide en mémoire, pas le vrai PostgreSQL (voir test/setup.js).
@@ -53,6 +53,24 @@ test('findGamesByPlayer renvoie les parties où le joueur est blanc ou noir', as
 
   assert.equal(parties.length, 2);
   assert.deepEqual(new Set(parties.map((partie) => partie.code)), new Set([partieBlanc, partieNoir]));
+});
+
+// Vérifie le status de la partie est en cour seulement lorsque les deux joueurs on rejoind la partie
+test('une partie ne commence que lorsque le deuxieme joueur la rejoint', async () => {
+  const blanc = await findOrCreateAccount({ githubId: 8, login: 'blanc', name: null, avatarUrl: null });
+  const noir = await findOrCreateAccount({ githubId: 9, login: 'noir', name: null, avatarUrl: null });
+  const code = await createGame(blanc.id);
+
+  const partieEnAttente = await findGame(code);
+  assert.equal(partieEnAttente.statut, 'en_attente');
+  assert.equal(partieEnAttente.joueur_noir_id, null);
+
+  await joinGame(code, noir.id);
+
+  const partieEnCours = await findGame(code);
+  assert.equal(partieEnCours.statut, 'en_cours');
+  assert.equal(partieEnCours.joueur_blanc_id, blanc.id);
+  assert.equal(partieEnCours.joueur_noir_id, noir.id);
 });
 
 test('deux comptes GitHub avec le meme login sont refuses (nom UNIQUE)', async () => {
